@@ -19,3 +19,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "1"
 trash = "5"
 
+
+# Until patina-ui 0.1.1 (the title bar hover fix) is on crates.io.
+[patch.crates-io]
+patina-ui = { path = "../patina" }

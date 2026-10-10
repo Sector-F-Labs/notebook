@@ -662,11 +662,10 @@ impl App {
         match entry {
             Entry::Note { path, name } => {
                 let current = self.note.as_ref().is_some_and(|n| &n.path == path);
-                let resp = ui
-                    .dnd_drag_source(egui::Id::new(("note", path)), path.clone(), |ui| {
-                        ui.selectable_label(current, format!("📄 {name}"))
-                    })
-                    .inner;
+                // One widget that both clicks and drags: a drag-source wrapper
+                // around the label would sit on top of it and eat its clicks.
+                let resp = ui.add(egui::Button::selectable(current, format!("📄 {name}")).sense(egui::Sense::click_and_drag()));
+                resp.dnd_set_drag_payload(path.clone());
                 if resp.clicked() {
                     self.open_note(path.clone());
                 }
@@ -676,10 +675,9 @@ impl App {
                 let id = ui.make_persistent_id(("folder", path));
                 let state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false);
                 let header = state.show_header(ui, |ui| {
-                    ui.dnd_drag_source(egui::Id::new(("folder", path)), path.clone(), |ui| {
-                        ui.add(egui::Label::new(format!("📁 {name}")).sense(egui::Sense::click()))
-                    })
-                    .inner
+                    let resp = ui.add(egui::Label::new(format!("📁 {name}")).sense(egui::Sense::click_and_drag()));
+                    resp.dnd_set_drag_payload(path.clone());
+                    resp
                 });
                 let (_, header, _) = header.body(|ui| {
                     for child in children {
@@ -687,6 +685,11 @@ impl App {
                     }
                 });
                 let row = header.inner;
+                if row.clicked() {
+                    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false);
+                    state.toggle(ui);
+                    state.store(ui.ctx());
+                }
                 row.context_menu(|ui| self.folder_menu(ui, path));
                 self.drop_target(ui, &row, path);
                 // Resting a drag on a closed folder opens it.
