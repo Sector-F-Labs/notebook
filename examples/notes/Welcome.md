@@ -1,10 +1,5 @@
 # Welcome to Notebook
 
-|  |  |
-| --- | --- |
-|  |  |
-|  |  |
-
 Notebook edits a folder of **markdown** notes as rich text, *Apple Notes style*. There's no syntax on screen: use the toolbar or shortcuts, and the markdown is written on save.
 
 ## What it does

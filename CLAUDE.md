@@ -13,7 +13,7 @@ ADRs before changing how notes are edited, saved or stored.
 ```bash
 make test          # unit tests, including editor tests driven through egui events
 make check         # tests + clippy -D warnings
-make run           # run on examples/notes
+make run           # run on a copy of examples/notes (target/demo-notes)
 make screenshot    # docs/screenshot-*.png, in a throwaway config dir
 ```
 

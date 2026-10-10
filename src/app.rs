@@ -31,8 +31,16 @@ enum Action {
     NewNote,
     NewFolder,
     RenameNote,
+    Save,
+    TrashNote,
+    Quit,
+    Undo,
+    Redo,
+    SelectAll,
     SetSkin(String),
     ReloadSkins,
+    CopySkins,
+    OpenSkinsFolder,
     SystemTitleBar(bool),
     ToggleSource,
     InsertTable,
@@ -61,6 +69,8 @@ pub struct App {
     dialog_error: Option<String>,
     /// The latest error, shown at the bottom of the window until dismissed.
     error: Option<String>,
+    /// A passing message, shown like `error` but not in red.
+    notice: Option<String>,
     picked: Option<mpsc::Receiver<PathBuf>>,
     /// Screenshot mode: where to save, and whether one was asked for.
     screenshot: Option<(PathBuf, bool)>,
@@ -85,6 +95,7 @@ impl App {
             dialog: None,
             dialog_error: None,
             error: None,
+            notice: None,
             picked: None,
             screenshot: std::env::var_os("NOTEBOOK_SCREENSHOT").map(|p| (PathBuf::from(p), false)),
             forced_skin: None,
@@ -291,6 +302,9 @@ impl App {
         if pressed(cmd, Key::S) {
             self.save();
         }
+        if pressed(cmd, Key::Q) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
         if pressed(cmd_shift, Key::M) && self.note.is_some() {
             self.toggle_source();
         }
@@ -372,22 +386,9 @@ impl App {
         let editing = self.note.is_some() && self.source.is_none();
         let mut left = Vec::new();
         let mut right = Vec::new();
-        TitleBar::new(&title, style).custom(custom).show(
+        TitleBar::new(&title, style).custom(custom).menu_bar(true).show(
             ui,
-            |ui| {
-                ui.menu_button("☰", |ui| self.main_menu(ui, &mut left)).response.on_hover_text("Menu");
-                if ui.button("Open…").on_hover_text("Open Folder (Ctrl+O)").clicked() {
-                    left.push(Action::PickFolder);
-                }
-                let has_folder = self.folder.is_some();
-                if ui
-                    .add_enabled(has_folder, egui::Button::new("New Note"))
-                    .on_hover_text("New Note (Ctrl+N)")
-                    .clicked()
-                {
-                    left.push(Action::NewNote);
-                }
-            },
+            |ui| self.menus(ui, &mut left),
             |ui| {
                 if self.note.is_none() {
                     return;
@@ -464,6 +465,34 @@ impl App {
                     self.dialog_error = None;
                 }
             }
+            Action::Save => self.save(),
+            Action::TrashNote => {
+                if let Some(note) = &self.note {
+                    self.dialog = Some(Dialog::Delete { path: note.path.clone() });
+                }
+            }
+            Action::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Action::Undo => self.editor.undo(),
+            Action::Redo => self.editor.redo(),
+            Action::SelectAll => {
+                self.editor.select_all();
+                self.editor.focus(ctx);
+            }
+            Action::CopySkins => match skin::shared_dir().ok_or("No config folder".to_string()).and_then(|dir| {
+                skin::export_built_ins(&dir, skin::BUILT_IN)
+            }) {
+                Ok(export) if export.copied.is_empty() => {
+                    self.notice = Some("The built-in skins are already in the skins folder".into())
+                }
+                Ok(export) => self.notice = Some(format!("Copied {} to the skins folder", export.copied.join(", "))),
+                Err(e) => self.error = Some(format!("Could not copy skins: {e}")),
+            },
+            Action::OpenSkinsFolder => {
+                if let Some(dir) = skin::shared_dir() {
+                    let _ = std::fs::create_dir_all(&dir);
+                    ctx.open_url(egui::OpenUrl::new_tab(format!("file://{}", dir.display())));
+                }
+            }
             Action::SetSkin(name) => {
                 self.forced_skin = None;
                 self.config.skin = Some(name);
@@ -492,35 +521,76 @@ impl App {
         }
     }
 
-    fn main_menu(&self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
-        if ui.add_enabled(self.folder.is_some(), egui::Button::new("New Folder")).clicked() {
-            actions.push(Action::NewFolder);
-            ui.close();
-        }
-        if self.note.is_some() && ui.button("Rename Note…").clicked() {
-            actions.push(Action::RenameNote);
-            ui.close();
-        }
-        ui.separator();
-        ui.menu_button("Skin", |ui| {
+    /// The menu bar: File, Edit, View and Skins.
+    fn menus(&self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        let has_folder = self.folder.is_some();
+        let has_note = self.note.is_some();
+        let editing = has_note && self.source.is_none();
+        let mut item = |ui: &mut egui::Ui, enabled: bool, label: &str, keys: &str, action: Action| {
+            if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(keys)).clicked() {
+                actions.push(action);
+                ui.close();
+            }
+        };
+        ui.menu_button("File", |ui| {
+            item(ui, true, "Open Folder…", "Ctrl+O", Action::PickFolder);
+            ui.separator();
+            item(ui, has_folder, "New Note…", "Ctrl+N", Action::NewNote);
+            item(ui, has_folder, "New Folder…", "Ctrl+Shift+N", Action::NewFolder);
+            ui.separator();
+            item(ui, has_note, "Save", "Ctrl+S", Action::Save);
+            item(ui, has_note, "Rename Note…", "F2", Action::RenameNote);
+            item(ui, has_note, "Move Note to Trash…", "", Action::TrashNote);
+            ui.separator();
+            item(ui, true, "Quit", "Ctrl+Q", Action::Quit);
+        });
+        ui.menu_button("Edit", |ui| {
+            item(ui, editing, "Undo", "Ctrl+Z", Action::Undo);
+            item(ui, editing, "Redo", "Ctrl+Shift+Z", Action::Redo);
+            ui.separator();
+            item(ui, editing, "Select All", "Ctrl+A", Action::SelectAll);
+            ui.separator();
+            item(ui, editing, "Insert Table", "", Action::InsertTable);
+        });
+        ui.menu_button("View", |ui| {
+            let mut source = self.source.is_some();
+            if ui.add_enabled(has_note, egui::Checkbox::new(&mut source, "Markdown source")).changed() {
+                actions.push(Action::ToggleSource);
+            }
+            let mut system = self.config.system_title_bar;
+            if ui.checkbox(&mut system, "System title bar").changed() {
+                actions.push(Action::SystemTitleBar(system));
+            }
+        });
+        ui.menu_button("Skins", |ui| {
             let current = self.skin().name.clone();
             for skin in &self.skins {
-                if ui.radio(skin.name == current, &skin.name).clicked() {
+                let resp = ui.radio(skin.name == current, &skin.name);
+                let resp = match &skin.path {
+                    Some(path) => resp.on_hover_text(path.display().to_string()),
+                    None => resp,
+                };
+                if resp.clicked() {
                     actions.push(Action::SetSkin(skin.name.clone()));
                 }
             }
             ui.separator();
-            if ui.button("Reload Skins").clicked() {
+            if ui.button("Reload skins").clicked() {
                 actions.push(Action::ReloadSkins);
             }
-            for error in &self.skin_errors {
-                ui.colored_label(ui.visuals().error_fg_color, error);
+            if ui.button("Copy built-in skins to folder").clicked() {
+                actions.push(Action::CopySkins);
+            }
+            if ui.button("Open skins folder").clicked() {
+                actions.push(Action::OpenSkinsFolder);
+            }
+            if !self.skin_errors.is_empty() {
+                ui.separator();
+                for error in &self.skin_errors {
+                    ui.colored_label(ui.visuals().error_fg_color, error);
+                }
             }
         });
-        let mut system = self.config.system_title_bar;
-        if ui.checkbox(&mut system, "System Title Bar").changed() {
-            actions.push(Action::SystemTitleBar(system));
-        }
     }
 
     fn sidebar(&mut self, ui: &mut egui::Ui) {
@@ -549,6 +619,12 @@ impl App {
         self.drop_target(ui, &resp, &folder);
         let entries = self.entries.clone();
         egui::ScrollArea::vertical().show(ui, |ui| {
+            let new_note = ui
+                .add(egui::Button::new(RichText::new("+ New Note").weak()).frame(false))
+                .on_hover_text("New Note (Ctrl+N), in the open note's folder");
+            if new_note.clicked() {
+                self.request_new_note(None);
+            }
             for entry in &entries {
                 self.entry(ui, entry);
             }
@@ -805,12 +881,18 @@ impl eframe::App for App {
             .frame(frame::header_frame(ui.style(), &style, radius))
             .show(ui, |ui| self.header(ui, &style));
 
-        if let Some(error) = self.error.clone() {
-            egui::Panel::bottom("error").show(ui, |ui| {
+        let message = self.error.clone().map(|e| (e, true)).or_else(|| self.notice.clone().map(|n| (n, false)));
+        if let Some((text, is_error)) = message {
+            egui::Panel::bottom("message").show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.colored_label(ui.visuals().error_fg_color, error);
+                    if is_error {
+                        ui.colored_label(ui.visuals().error_fg_color, text);
+                    } else {
+                        ui.label(text);
+                    }
                     if ui.small_button("Dismiss").clicked() {
                         self.error = None;
+                        self.notice = None;
                     }
                 });
             });

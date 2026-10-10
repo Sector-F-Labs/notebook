@@ -19,8 +19,10 @@ so it shares a window frame and skins with Photograph and UnAmp.
 - **Markdown source** view (Ctrl+Shift+M) for when you want it.
 - **Saving:** notes save themselves 1.5 s after you stop typing, through a temporary file, and a
   note you only open is never rewritten.
-- **The sidebar:** a tree of notes and folders. Right-click for new note, new folder, rename and
-  move to trash, and drag items to move them.
+- **The sidebar:** a tree of notes and folders, with New Note at its top. Right-click for new
+  note, new folder, rename and move to trash, and drag items to move them.
+- **Menus** File, Edit, View and Skins in the header bar, as in UnAmp; formatting buttons on the
+  right.
 - **Skins** from Patina, including Dark Orange, and any skin in `~/.config/patina/skins/`.
 
 ![Dark Orange](docs/screenshot-dark-orange.png)
@@ -30,6 +32,7 @@ so it shares a window frame and skins with Photograph and UnAmp.
 | Keys | Does |
 |---|---|
 | Ctrl+O / Ctrl+N / Ctrl+Shift+N | Open folder / new note / new folder |
+| Ctrl+Q | Quit |
 | Ctrl+S | Save now |
 | Ctrl+B / Ctrl+I / Ctrl+E / Ctrl+Shift+X | Bold / italic / code / strikethrough |
 | Ctrl+0 / 1 / 2 / 3 | Body / title / heading / subheading |
@@ -43,7 +46,7 @@ so it shares a window frame and skins with Photograph and UnAmp.
 
 ```sh
 make            # list targets
-make run        # run on the example notes
+make run        # run on a copy of the example notes
 make test       # tests
 make check      # tests and clippy
 ```
