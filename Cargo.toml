@@ -12,14 +12,10 @@ eframe = { version = "0.35", features = ["persistence"] }
 egui = "0.35"
 egui_extras = { version = "0.35", features = ["syntect"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
-patina-ui = "0.1"
+patina-ui = "0.1.1"
 pulldown-cmark = { version = "0.13", default-features = false }
 rfd = "0.17"
 serde = { version = "1", features = ["derive"] }
 toml = "1"
 trash = "5"
 
-
-# Until patina-ui 0.1.1 (the title bar hover fix) is on crates.io.
-[patch.crates-io]
-patina-ui = { path = "../patina" }
