@@ -51,13 +51,15 @@ install: build ## Install Notebook and its launcher for the current user (PREFIX
 	install -d $(APPSDIR)
 	sed 's|^Exec=notebook|Exec=$(BINDIR)/notebook|' packaging/linux/$(APP_ID).desktop > $(APPSDIR)/$(APP_ID).desktop
 	-update-desktop-database -q $(APPSDIR)
-	-gtk-update-icon-cache -q -t $(ICONDIR) 2>/dev/null
+	@# GTK trusts an icon cache over the folder, so refresh one if it's there.
+	-@test ! -f $(ICONDIR)/icon-theme.cache || gtk-update-icon-cache -q -t -f $(ICONDIR)
 	@echo "Installed $(BINDIR)/notebook and the $(APP_ID) launcher"
 
 uninstall: ## Remove what make install put in place
 	rm -f $(BINDIR)/notebook $(APPSDIR)/$(APP_ID).desktop
 	rm -f $(ICONDIR)/scalable/apps/$(APP_ID).svg $(ICONDIR)/128x128/apps/$(APP_ID).png
 	-update-desktop-database -q $(APPSDIR)
+	-@test ! -f $(ICONDIR)/icon-theme.cache || gtk-update-icon-cache -q -t -f $(ICONDIR)
 
 screenshot: ## Regenerate docs/screenshot-*.png from the example notes
 	@rm -rf target/screenshot-config target/screenshot-data
