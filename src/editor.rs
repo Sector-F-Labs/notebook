@@ -35,6 +35,40 @@ pub enum BlockStyle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Clipboard {
+    Cut,
+    Copy,
+    Paste,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum MenuAction {
+    Clipboard(Clipboard),
+    Inline(Inline),
+    SelectAll,
+}
+
+/// The right-click menu on the text.
+fn context_menu(ui: &mut egui::Ui, has_selection: bool, picked: &mut Option<MenuAction>) {
+    let mut item = |ui: &mut egui::Ui, enabled: bool, label: &str, keys: &str, action: MenuAction| {
+        if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(keys)).clicked() {
+            *picked = Some(action);
+            ui.close();
+        }
+    };
+    item(ui, has_selection, "Cut", "Ctrl+X", MenuAction::Clipboard(Clipboard::Cut));
+    item(ui, has_selection, "Copy", "Ctrl+C", MenuAction::Clipboard(Clipboard::Copy));
+    item(ui, true, "Paste", "Ctrl+V", MenuAction::Clipboard(Clipboard::Paste));
+    ui.separator();
+    item(ui, true, "Bold", "Ctrl+B", MenuAction::Inline(Inline::Bold));
+    item(ui, true, "Italic", "Ctrl+I", MenuAction::Inline(Inline::Italic));
+    item(ui, true, "Strikethrough", "Ctrl+Shift+X", MenuAction::Inline(Inline::Strike));
+    item(ui, true, "Code", "Ctrl+E", MenuAction::Inline(Inline::Code));
+    ui.separator();
+    item(ui, true, "Select All", "Ctrl+A", MenuAction::SelectAll);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum EditKind {
     Typing,
     Deleting,
@@ -832,6 +866,25 @@ impl Editor {
         best
     }
 
+    /// Cut, Copy and Paste for menus: the window turns them into the same
+    /// events the keyboard shortcuts give, read next frame while focused.
+    pub fn clipboard(&self, ctx: &egui::Context, action: Clipboard) {
+        ctx.send_viewport_cmd(match action {
+            Clipboard::Cut => egui::ViewportCommand::RequestCut,
+            Clipboard::Copy => egui::ViewportCommand::RequestCopy,
+            Clipboard::Paste => egui::ViewportCommand::RequestPaste,
+        });
+        self.focus(ctx);
+    }
+
+    fn menu_action(&mut self, ctx: &egui::Context, action: MenuAction, now: f64) {
+        match action {
+            MenuAction::Clipboard(c) => self.clipboard(ctx, c),
+            MenuAction::Inline(style) => self.toggle_inline(style, now),
+            MenuAction::SelectAll => self.select_all(),
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Drawing
     // -----------------------------------------------------------------------
@@ -920,7 +973,23 @@ impl Editor {
         let pointer = ui.input(|i| i.pointer.interact_pos());
         let shift = ui.input(|i| i.modifiers.shift);
         let command = ui.input(|i| i.modifiers.command);
+        let has_selection = self.has_selection();
+        let mut menu = None;
+        for (_, resp) in &presses {
+            resp.context_menu(|ui| context_menu(ui, has_selection, &mut menu));
+        }
+        below_resp.context_menu(|ui| context_menu(ui, has_selection, &mut menu));
         for (i, resp) in &presses {
+            if resp.secondary_clicked() {
+                // Right-clicking outside the selection moves the cursor there.
+                if let Some(pos) = pointer.and_then(|p| self.pos_at(p)) {
+                    let (a, b) = self.selection();
+                    if pos < a || pos > b || a == b {
+                        self.move_to(pos, false);
+                    }
+                }
+                continue;
+            }
             if resp.double_clicked() {
                 let Pos { col, .. } = self.pos_at(pointer.unwrap_or_default()).unwrap_or(self.cursor);
                 let range = doc::word_at(&doc::plain(&self.line(*i).spans), col);
@@ -955,6 +1024,17 @@ impl Editor {
         }
         if below_resp.clicked() {
             self.move_to(Pos::new(self.paras.len() - 1, usize::MAX), shift);
+        }
+        // Each row is a widget of its own, and on the frame a click ends
+        // egui counts only the clicked widget as hovered, so it sees a click
+        // on the text as a click outside the editor and takes its focus
+        // away. Clicks in the editor and on its menu take it back.
+        let clicked = |r: &egui::Response| r.clicked() || r.secondary_clicked();
+        if presses.iter().any(|(_, r)| clicked(r)) || clicked(&below_resp) {
+            self.focus(ui.ctx());
+        }
+        if let Some(action) = menu {
+            self.menu_action(ui.ctx(), action, now);
             self.focus(ui.ctx());
         }
         for i in tasks {
@@ -1434,4 +1514,94 @@ mod tests {
         frame(&ctx, &mut ed, &mut t, vec![type_text("!")]);
         assert_eq!(ed.markdown(), "<div>html</div>\n\nText!\n");
     }
+
+    fn press(at: Pos2, pressed: bool, button: egui::PointerButton) -> Event {
+        Event::PointerButton { pos: at, button, pressed, modifiers: Modifiers::NONE }
+    }
+
+    /// Clicks at `at` with a frame for the press and one for the release.
+    fn click(ctx: &egui::Context, ed: &mut Editor, t: &mut f64, at: Pos2) {
+        frame(ctx, ed, t, vec![Event::PointerMoved(at), press(at, true, egui::PointerButton::Primary)]);
+        frame(ctx, ed, t, vec![press(at, false, egui::PointerButton::Primary)]);
+    }
+
+    /// Where character `col` of paragraph `para` was drawn, mid-row.
+    fn screen_pos(ed: &Editor, para: usize, col: usize) -> Pos2 {
+        let placed = ed.placed[para].as_ref().unwrap();
+        placed.galley.pos_from_cursor(CCursor::new(col)).center() + placed.origin.to_vec2()
+    }
+
+    /// An editor that has never had focus, as when a note was just opened.
+    fn unfocused(md: &str) -> (egui::Context, Editor, f64) {
+        let ctx = egui::Context::default();
+        crate::fonts::install(&ctx);
+        let mut editor = Editor::new(Id::new("editor"));
+        editor.load(md);
+        let mut t = 0.0;
+        frame(&ctx, &mut editor, &mut t, vec![]);
+        (ctx, editor, t)
+    }
+
+    #[test]
+    fn clicking_into_text_and_typing_types_there() {
+        let (ctx, mut ed, mut t) = unfocused("hello world\n");
+        let at = screen_pos(&ed, 0, 5);
+        click(&ctx, &mut ed, &mut t, at);
+        frame(&ctx, &mut ed, &mut t, vec![type_text(",")]);
+        assert_eq!(ed.markdown(), "hello, world\n");
+    }
+
+    #[test]
+    fn double_clicking_a_word_selects_it_and_typing_replaces_it() {
+        let (ctx, mut ed, mut t) = unfocused("hello world\n");
+        let at = screen_pos(&ed, 0, 8);
+        click(&ctx, &mut ed, &mut t, at);
+        t += 0.05;
+        click(&ctx, &mut ed, &mut t, at);
+        assert_eq!(ed.selection(), (Pos::new(0, 6), Pos::new(0, 11)));
+        frame(&ctx, &mut ed, &mut t, vec![type_text("there")]);
+        assert_eq!(ed.markdown(), "hello there\n");
+    }
+
+    #[test]
+    fn dragging_a_selection_and_typing_replaces_it() {
+        let (ctx, mut ed, mut t) = unfocused("hello world\n");
+        let (from, to) = (screen_pos(&ed, 0, 0), screen_pos(&ed, 0, 5));
+        frame(&ctx, &mut ed, &mut t, vec![Event::PointerMoved(from), press(from, true, egui::PointerButton::Primary)]);
+        frame(&ctx, &mut ed, &mut t, vec![Event::PointerMoved(to)]);
+        frame(&ctx, &mut ed, &mut t, vec![press(to, false, egui::PointerButton::Primary)]);
+        frame(&ctx, &mut ed, &mut t, vec![type_text("goodbye")]);
+        assert_eq!(ed.markdown(), "goodbye world\n");
+    }
+
+    fn right_click(ctx: &egui::Context, ed: &mut Editor, t: &mut f64, at: Pos2) {
+        frame(ctx, ed, t, vec![Event::PointerMoved(at), press(at, true, egui::PointerButton::Secondary)]);
+        frame(ctx, ed, t, vec![press(at, false, egui::PointerButton::Secondary)]);
+        frame(ctx, ed, t, vec![]);
+    }
+
+    #[test]
+    fn right_click_opens_a_menu_and_keeps_a_selection_it_lands_in() {
+        let (ctx, mut ed, mut t) = unfocused("hello world\n");
+        ed.move_to(Pos::new(0, 6), false);
+        ed.move_to(Pos::new(0, 11), true);
+        let at = screen_pos(&ed, 0, 8);
+        right_click(&ctx, &mut ed, &mut t, at);
+        assert!(egui::Popup::is_any_open(&ctx), "the context menu is open");
+        assert_eq!(ed.selection(), (Pos::new(0, 6), Pos::new(0, 11)));
+        assert!(ctx.memory(|m| m.has_focus(ed.id)), "the editor has the keyboard");
+    }
+
+    #[test]
+    fn right_click_outside_the_selection_moves_the_cursor() {
+        let (ctx, mut ed, mut t) = unfocused("hello world\n");
+        ed.move_to(Pos::new(0, 0), false);
+        ed.move_to(Pos::new(0, 3), true);
+        let at = screen_pos(&ed, 0, 8);
+        right_click(&ctx, &mut ed, &mut t, at);
+        assert!(!ed.has_selection());
+        assert_eq!(ed.cursor.para, 0);
+        assert!((7..=9).contains(&ed.cursor.col), "{:?}", ed.cursor);
+    }
 }
+

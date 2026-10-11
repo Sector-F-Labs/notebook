@@ -10,7 +10,7 @@ use patina::frame::{self, TitleBar};
 use patina::skin::{self, Skin};
 
 use crate::config::Config;
-use crate::editor::{BlockStyle, Editor};
+use crate::editor::{BlockStyle, Clipboard, Editor};
 use crate::markdown::Inline;
 use crate::notes::{self, Entry};
 
@@ -36,6 +36,7 @@ enum Action {
     Quit,
     Undo,
     Redo,
+    Clipboard(Clipboard),
     SelectAll,
     SetSkin(String),
     ReloadSkins,
@@ -474,6 +475,7 @@ impl App {
             Action::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             Action::Undo => self.editor.undo(),
             Action::Redo => self.editor.redo(),
+            Action::Clipboard(c) => self.editor.clipboard(ctx, c),
             Action::SelectAll => {
                 self.editor.select_all();
                 self.editor.focus(ctx);
@@ -547,6 +549,10 @@ impl App {
         ui.menu_button("Edit", |ui| {
             item(ui, editing, "Undo", "Ctrl+Z", Action::Undo);
             item(ui, editing, "Redo", "Ctrl+Shift+Z", Action::Redo);
+            ui.separator();
+            item(ui, editing, "Cut", "Ctrl+X", Action::Clipboard(Clipboard::Cut));
+            item(ui, editing, "Copy", "Ctrl+C", Action::Clipboard(Clipboard::Copy));
+            item(ui, editing, "Paste", "Ctrl+V", Action::Clipboard(Clipboard::Paste));
             ui.separator();
             item(ui, editing, "Select All", "Ctrl+A", Action::SelectAll);
             ui.separator();
