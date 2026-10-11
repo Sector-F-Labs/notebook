@@ -23,6 +23,10 @@ The user may be running Notebook (this one or the GTK one) while you work. Never
 config: run test instances with `XDG_CONFIG_HOME` and `XDG_DATA_HOME` pointing at a scratch
 directory (as `make screenshot` does), and never against their own notes folder.
 
+On Wayland, `with_icon` does nothing. GNOME takes the window icon from the installed
+`com.sectorflabs.Notebook.desktop`, matched by app id. So "no icon when I cargo run" means the
+launcher isn't installed, or the window was opened before it was.
+
 ## Layout
 
 - `src/markdown.rs`: markdown ↔ line model (`Line`/`Block`/`Span`), carried over from the GTK

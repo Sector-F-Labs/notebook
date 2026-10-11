@@ -56,6 +56,10 @@ launcher in the app grid (set `PREFIX` to change where). `make uninstall` remove
 replaces the GTK Notebook's `notebook` binary. Run `make uninstall` in that repo first, so only one
 launcher remains.
 
+On Wayland, the window's icon comes from the installed launcher, which GNOME matches by the
+window's app id, `com.sectorflabs.Notebook`. So even `cargo run` only shows the icon once
+`make install` has put the launcher in place, and only for windows opened after that.
+
 `cargo run -- <folder or note>` opens a folder as the workspace, or a single note.
 
 Decisions are recorded in [docs/adr](docs/adr/README.md).
