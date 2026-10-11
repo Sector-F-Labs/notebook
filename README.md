@@ -1,4 +1,4 @@
-# Notebook
+# <img src="packaging/linux/notebook.svg" width="40" align="top"> Notebook
 
 Notebook is a notes app for a folder of markdown files. It edits them as rich text, Apple Notes
 style. There's no markdown on screen: you format with the toolbar or shortcuts, and the markdown is
@@ -50,6 +50,11 @@ make run        # run on a copy of the example notes
 make test       # tests
 make check      # tests and clippy
 ```
+
+`make install` installs Notebook for your user: the binary in `~/.local/bin`, plus its icon and a
+launcher in the app grid (set `PREFIX` to change where). `make uninstall` removes them. Installing
+replaces the GTK Notebook's `notebook` binary. Run `make uninstall` in that repo first, so only one
+launcher remains.
 
 `cargo run -- <folder or note>` opens a folder as the workspace, or a single note.
 

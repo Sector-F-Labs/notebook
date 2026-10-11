@@ -1,9 +1,15 @@
 .DEFAULT_GOAL := help
 
+APP_ID := com.sectorflabs.Notebook
+PREFIX ?= $(HOME)/.local
+BINDIR := $(PREFIX)/bin
+APPSDIR := $(PREFIX)/share/applications
+ICONDIR := $(PREFIX)/share/icons/hicolor
+
 # A throwaway config dir, so screenshots never touch your settings.
 SCREENSHOT_ENV := XDG_CONFIG_HOME=$(CURDIR)/target/screenshot-config XDG_DATA_HOME=$(CURDIR)/target/screenshot-data
 
-.PHONY: help demo-notes run dev build test check screenshot clean
+.PHONY: help demo-notes run dev build test check icons install uninstall screenshot clean
 
 help: ## Show this help
 	@echo "Usage: make <target>"
@@ -31,6 +37,27 @@ test: ## Run the tests
 
 check: test ## Run the tests and clippy
 	cargo clippy --all-targets -- -D warnings
+
+icons: ## Render assets/notebook-icon-128.png from packaging/linux/notebook.svg
+	cargo run -q --example render_icon -- 128 assets/notebook-icon-128.png
+
+# For the current user, as the GTK Notebook did; no sudo. The launcher's
+# Exec gets the absolute path, so it works even if $(BINDIR) isn't on the
+# GNOME session's PATH.
+install: build ## Install Notebook and its launcher for the current user (PREFIX=~/.local)
+	install -Dm755 target/release/notebook $(BINDIR)/notebook
+	install -Dm644 packaging/linux/notebook.svg $(ICONDIR)/scalable/apps/$(APP_ID).svg
+	install -Dm644 assets/notebook-icon-128.png $(ICONDIR)/128x128/apps/$(APP_ID).png
+	install -d $(APPSDIR)
+	sed 's|^Exec=notebook|Exec=$(BINDIR)/notebook|' packaging/linux/$(APP_ID).desktop > $(APPSDIR)/$(APP_ID).desktop
+	-update-desktop-database -q $(APPSDIR)
+	-gtk-update-icon-cache -q -t $(ICONDIR) 2>/dev/null
+	@echo "Installed $(BINDIR)/notebook and the $(APP_ID) launcher"
+
+uninstall: ## Remove what make install put in place
+	rm -f $(BINDIR)/notebook $(APPSDIR)/$(APP_ID).desktop
+	rm -f $(ICONDIR)/scalable/apps/$(APP_ID).svg $(ICONDIR)/128x128/apps/$(APP_ID).png
+	-update-desktop-database -q $(APPSDIR)
 
 screenshot: ## Regenerate docs/screenshot-*.png from the example notes
 	@rm -rf target/screenshot-config target/screenshot-data

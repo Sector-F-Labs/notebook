@@ -48,6 +48,7 @@ hold are restated here, marked as carried over.
 | [0005](0005-tables-with-markdown-cells.md) | Embed tables as grids of cells holding inline markdown | Accepted (carried over) |
 | [0006](0006-code-blocks-highlighted-with-syntect.md) | Embed code blocks with a language picker, highlighted by syntect through egui_extras | Proposed |
 | [0007](0007-notes-outside-the-workspace-open-on-their-own.md) | Open notes from outside the workspace on their own | Accepted (carried over) |
+| [0008](0008-install-per-user-replacing-the-gtk-binary.md) | Install per user with make install, replacing the GTK Notebook's binary | Proposed |
 
 ## Decision Relationship
 
@@ -59,6 +60,7 @@ flowchart TD
     B --> E[0005: Tables as embedded grids]
     B --> F[0006: Code blocks with syntect]
     A --> G[0007: Notes outside the workspace]
+    A --> H[0008: Per-user install, icon]
 ```
 
 ## Revisit Triggers
