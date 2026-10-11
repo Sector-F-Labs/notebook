@@ -76,6 +76,8 @@ pub struct App {
     /// Screenshot mode: where to save, and whether one was asked for.
     screenshot: Option<(PathBuf, bool)>,
     forced_skin: Option<String>,
+    /// Put the keyboard in the editor once this frame's clicks are handled.
+    focus_editor: bool,
 }
 
 impl App {
@@ -100,6 +102,7 @@ impl App {
             picked: None,
             screenshot: std::env::var_os("NOTEBOOK_SCREENSHOT").map(|p| (PathBuf::from(p), false)),
             forced_skin: None,
+            focus_editor: false,
         };
         // For screenshots: a skin for this run only, not saved.
         app.forced_skin = std::env::var("NOTEBOOK_SKIN").ok();
@@ -170,6 +173,8 @@ impl App {
                 self.editor.load(&text);
                 self.source = self.source.is_some().then_some(text);
                 self.note = Some(OpenNote { path, saved_edits: self.editor.edits(), edited_at: 0.0 });
+                // The cursor goes in at the start, ready to type.
+                self.focus_editor = true;
             }
             Err(e) => self.error = Some(format!("Could not open {}: {e}", path.display())),
         }
@@ -966,6 +971,12 @@ impl eframe::App for App {
                 });
             });
 
+        // After the editor has drawn: the sidebar click that opened the note
+        // counts as a click outside the editor, which would drop a focus
+        // requested any earlier this frame.
+        if std::mem::take(&mut self.focus_editor) && self.source.is_none() && self.dialog.is_none() {
+            self.editor.focus(&ctx);
+        }
         self.dialogs(&ctx);
         if custom {
             frame::edges(&ctx, radius, style.border);
