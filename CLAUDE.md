@@ -39,3 +39,6 @@ launcher isn't installed, or the window was opened before it was.
 - `src/notes.rs`: workspace scanning and file helpers.
 - `src/app.rs`: window, Patina header bar and toolbar, sidebar, dialogs, autosave, skins.
 - `src/config.rs`: `~/.config/notebook/config.toml`.
+- `skins/notebook.toml`: the built-in Notebook skin and the starting one (ADR-0009). `bar_controls`
+  in `app.rs` colours the title bar's controls when a skin colours the bar; it's a copy of
+  Calendar's and belongs in Patina.

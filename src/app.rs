@@ -128,7 +128,7 @@ impl App {
     }
 
     fn skin(&self) -> &Skin {
-        let name = self.forced_skin.as_deref().or(self.config.skin.as_deref()).unwrap_or(skin::DEFAULT_SKIN);
+        let name = self.forced_skin.as_deref().or(self.config.skin.as_deref()).unwrap_or(HOME_SKIN);
         self.skins.iter().find(|s| s.name == name).unwrap_or(&self.skins[0])
     }
 
@@ -386,6 +386,7 @@ impl App {
         let editing = self.note.is_some() && self.source.is_none();
         let mut left = Vec::new();
         let mut right = Vec::new();
+        bar_controls(ui, style);
         TitleBar::new(&title, style).custom(custom).menu_bar(true).show(
             ui,
             |ui| self.menus(ui, &mut left),
@@ -479,7 +480,7 @@ impl App {
                 self.editor.focus(ctx);
             }
             Action::CopySkins => match skin::shared_dir().ok_or("No config folder".to_string()).and_then(|dir| {
-                skin::export_built_ins(&dir, skin::BUILT_IN)
+                skin::export_built_ins(&dir, &[skin::BUILT_IN, BUILT_IN].concat())
             }) {
                 Ok(export) if export.copied.is_empty() => {
                     self.notice = Some("The built-in skins are already in the skins folder".into())
@@ -844,8 +845,41 @@ impl App {
     }
 }
 
+/// The app's own skins, compiled in.
+const BUILT_IN: &[(&str, &str)] = &[("notebook.toml", include_str!("../skins/notebook.toml"))];
+
+/// The skin used until one is picked: the app's own.
+const HOME_SKIN: &str = "Notebook";
+
 fn load_skins() -> (Vec<Skin>, Vec<String>) {
-    skin::load_all(skin::BUILT_IN, &skin::shared_dir().into_iter().collect::<Vec<_>>())
+    let built_in = [skin::BUILT_IN, BUILT_IN].concat();
+    skin::load_all(&built_in, &skin::shared_dir().into_iter().collect::<Vec<_>>())
+}
+
+/// Colours the title bar's own controls from the frame style when a skin
+/// gives the bar a colour of its own (Notebook's brown), so menus and buttons
+/// read on it. Popups and the rest of the window keep the skin's colours.
+/// The same as Calendar's; it belongs in Patina's `TitleBar` (ADR-0009).
+fn bar_controls(ui: &mut egui::Ui, style: &frame::FrameStyle) {
+    let v = ui.visuals_mut();
+    if style.title_bar == v.panel_fill {
+        return;
+    }
+    let ink = style.title_text;
+    v.override_text_color = Some(ink);
+    v.weak_text_color = Some(ink.gamma_multiply(0.75));
+    v.widgets.noninteractive.bg_stroke.color = ink.gamma_multiply(0.35);
+    for (w, fill) in [
+        (&mut v.widgets.inactive, ink.gamma_multiply(0.14)),
+        (&mut v.widgets.hovered, style.controls.hover),
+        (&mut v.widgets.active, style.controls.pressed),
+        (&mut v.widgets.open, style.controls.pressed),
+    ] {
+        w.weak_bg_fill = fill;
+        w.fg_stroke.color = ink;
+    }
+    v.selection.bg_fill = ink.gamma_multiply(0.26);
+    v.selection.stroke.color = ink;
 }
 
 impl eframe::App for App {
@@ -973,5 +1007,35 @@ impl eframe::App for App {
 
     fn on_exit(&mut self) {
         self.save();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui::Color32;
+
+    #[test]
+    fn the_notebook_skin_is_built_in_and_parses_cleanly() {
+        let skin = Skin::parse(BUILT_IN[0].1).unwrap();
+        assert_eq!(skin.name, HOME_SKIN);
+        assert!(skin.warnings.is_empty(), "{:?}", skin.warnings);
+        let v = skin.visuals(egui::Visuals::light());
+        assert_ne!(skin.frame_style(&v).title_bar, v.panel_fill, "the bar has its own colour");
+    }
+
+    #[test]
+    fn bar_controls_only_change_a_coloured_bar() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let plain = frame::FrameStyle::from_visuals(ui.visuals());
+            let before = ui.visuals().clone();
+            bar_controls(ui, &plain);
+            assert_eq!(*ui.visuals(), before, "a bar in the panel colour is left alone");
+            let brown = frame::FrameStyle { title_bar: Color32::BROWN, title_text: Color32::WHITE, ..plain };
+            bar_controls(ui, &brown);
+            assert_eq!(ui.visuals().widgets.inactive.fg_stroke.color, Color32::WHITE);
+            assert_eq!(ui.visuals().override_text_color, Some(Color32::WHITE));
+        });
     }
 }

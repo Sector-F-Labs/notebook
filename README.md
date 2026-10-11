@@ -7,7 +7,7 @@ written when the note saves.
 It's built with [egui](https://github.com/emilk/egui) on [Patina](https://github.com/Sector-F-Labs/patina),
 so it shares a window frame and skins with Photograph and UnAmp.
 
-![Notebook](docs/screenshot-light.png)
+![Notebook](docs/screenshot-notebook.png)
 
 ## Features
 
@@ -23,8 +23,10 @@ so it shares a window frame and skins with Photograph and UnAmp.
   note, new folder, rename and move to trash, and drag items to move them.
 - **Menus** File, Edit, View and Skins in the header bar, as in UnAmp; formatting buttons on the
   right.
-- **Skins** from Patina, including Dark Orange, and any skin in `~/.config/patina/skins/`.
+- **Skins:** its own Notebook skin, brown leather over cream paper like the icon, which it starts
+  in; Patina's Default and Dark Orange; and any skin in `~/.config/patina/skins/`.
 
+![Default](docs/screenshot-light.png)
 ![Dark Orange](docs/screenshot-dark-orange.png)
 
 ## Shortcuts

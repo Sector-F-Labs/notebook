@@ -64,7 +64,8 @@ uninstall: ## Remove what make install put in place
 screenshot: ## Regenerate docs/screenshot-*.png from the example notes
 	@rm -rf target/screenshot-config target/screenshot-data
 	@mkdir -p docs target/screenshot-config target/screenshot-data
-	$(SCREENSHOT_ENV) NOTEBOOK_SCREENSHOT=docs/screenshot-light.png NOTEBOOK_THEME=light cargo run -- examples/notes
+	$(SCREENSHOT_ENV) NOTEBOOK_SCREENSHOT=docs/screenshot-notebook.png cargo run -- examples/notes
+	$(SCREENSHOT_ENV) NOTEBOOK_SCREENSHOT=docs/screenshot-light.png NOTEBOOK_SKIN=Default NOTEBOOK_THEME=light cargo run -- examples/notes
 	$(SCREENSHOT_ENV) NOTEBOOK_SCREENSHOT=docs/screenshot-dark-orange.png NOTEBOOK_SKIN="Dark Orange" cargo run -- examples/notes
 
 clean: ## Remove build output
