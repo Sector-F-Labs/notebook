@@ -440,7 +440,7 @@ impl App {
                             (BlockStyle::Heading(3), "Subheading"),
                             (BlockStyle::Paragraph, "Body"),
                             (BlockStyle::Quote, "Quote"),
-                            (BlockStyle::Code, "Monospaced"),
+                            (BlockStyle::Code, "Code Block"),
                         ] {
                             if ui.button(label).clicked() {
                                 right.push(Action::Block(style));
@@ -561,6 +561,7 @@ impl App {
             ui.separator();
             item(ui, editing, "Select All", "Ctrl+A", Action::SelectAll);
             ui.separator();
+            item(ui, editing, "Code Block", "", Action::Block(BlockStyle::Code));
             item(ui, editing, "Insert Table", "", Action::InsertTable);
         });
         ui.menu_button("View", |ui| {

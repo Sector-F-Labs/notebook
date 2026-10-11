@@ -45,7 +45,18 @@ pub enum Clipboard {
 enum MenuAction {
     Clipboard(Clipboard),
     Inline(Inline),
+    CodeBlock,
+    InsertTable,
     SelectAll,
+}
+
+fn code_id(editor: Id, para: usize) -> Id {
+    editor.with(("code", para))
+}
+
+/// The id of a code block's text field (see `embeds::code`).
+fn code_text_id(editor: Id, para: usize) -> Id {
+    code_id(editor, para).with("text")
 }
 
 /// The right-click menu on the text.
@@ -64,6 +75,10 @@ fn context_menu(ui: &mut egui::Ui, has_selection: bool, picked: &mut Option<Menu
     item(ui, true, "Italic", "Ctrl+I", MenuAction::Inline(Inline::Italic));
     item(ui, true, "Strikethrough", "Ctrl+Shift+X", MenuAction::Inline(Inline::Strike));
     item(ui, true, "Code", "Ctrl+E", MenuAction::Inline(Inline::Code));
+    ui.separator();
+    let code_label = if has_selection { "Make Code Block" } else { "Code Block" };
+    item(ui, true, code_label, "", MenuAction::CodeBlock);
+    item(ui, true, "Insert Table", "", MenuAction::InsertTable);
     ui.separator();
     item(ui, true, "Select All", "Ctrl+A", MenuAction::SelectAll);
 }
@@ -119,6 +134,8 @@ pub struct Editor {
     preedit: Option<String>,
     edits: u64,
     scroll_to_cursor: bool,
+    /// A code block just made, whose text should take the keyboard.
+    focus_code: Option<usize>,
     id: Id,
 }
 
@@ -140,6 +157,7 @@ impl Editor {
             preedit: None,
             edits: 0,
             scroll_to_cursor: false,
+            focus_code: None,
             id,
         }
     }
@@ -553,6 +571,7 @@ impl Editor {
         let code: Vec<String> =
             (a.para..=b.para).filter_map(|i| self.paras[i].as_text().map(|l| doc::plain(&l.spans))).collect();
         self.paras.splice(a.para..=b.para, [Para::Code { lang: String::new(), code: code.join("\n") }]);
+        self.focus_code = Some(a.para);
         if !matches!(self.paras.get(a.para + 1), Some(Para::Text(_))) {
             self.paras.insert(a.para + 1, Para::text(Block::Paragraph));
         }
@@ -881,6 +900,8 @@ impl Editor {
         match action {
             MenuAction::Clipboard(c) => self.clipboard(ctx, c),
             MenuAction::Inline(style) => self.toggle_inline(style, now),
+            MenuAction::CodeBlock => self.set_block(BlockStyle::Code, now),
+            MenuAction::InsertTable => self.insert_table(now),
             MenuAction::SelectAll => self.select_all(),
         }
     }
@@ -949,7 +970,7 @@ impl Editor {
                 let original = self.paras[i].clone();
                 let response = match &mut self.paras[i] {
                     Para::Table(table) => embeds::table(ui, table, self.id.with(("table", i))),
-                    Para::Code { lang, code } => embeds::code(ui, lang, code, self.id.with(("code", i))),
+                    Para::Code { lang, code } => embeds::code(ui, lang, code, code_id(self.id, i)),
                     Para::Text(_) => unreachable!(),
                 };
                 if response.changed {
@@ -1036,6 +1057,10 @@ impl Editor {
         if let Some(action) = menu {
             self.menu_action(ui.ctx(), action, now);
             self.focus(ui.ctx());
+        }
+        // Last, so it wins over the focus a menu or toolbar click asks for.
+        if let Some(i) = self.focus_code.take() {
+            ui.memory_mut(|m| m.request_focus(code_text_id(self.id, i)));
         }
         for i in tasks {
             self.toggle_task(i, now);
@@ -1602,6 +1627,19 @@ mod tests {
         assert!(!ed.has_selection());
         assert_eq!(ed.cursor.para, 0);
         assert!((7..=9).contains(&ed.cursor.col), "{:?}", ed.cursor);
+    }
+
+    #[test]
+    fn making_a_code_block_puts_the_keyboard_in_it() {
+        let (ctx, mut ed, mut t) = setup("first\n\nlet x = 1;\n");
+        ed.move_to(Pos::new(1, 3), false);
+        ed.set_block(BlockStyle::Code, t);
+        frame(&ctx, &mut ed, &mut t, vec![]);
+        frame(&ctx, &mut ed, &mut t, vec![]);
+        assert_eq!(ed.markdown(), "first\n\n```\nlet x = 1;\n```\n");
+        assert!(ctx.memory(|m| m.has_focus(code_text_id(ed.id, 1))), "the code block has the keyboard");
+        frame(&ctx, &mut ed, &mut t, vec![type_text(" // one")]);
+        assert_eq!(ed.markdown(), "first\n\n```\nlet x = 1; // one\n```\n");
     }
 }
 
