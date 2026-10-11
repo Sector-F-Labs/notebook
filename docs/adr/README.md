@@ -50,6 +50,7 @@ hold are restated here, marked as carried over.
 | [0007](0007-notes-outside-the-workspace-open-on-their-own.md) | Open notes from outside the workspace on their own | Accepted (carried over) |
 | [0008](0008-install-per-user-replacing-the-gtk-binary.md) | Install per user with make install, replacing the GTK Notebook's binary | Proposed |
 | [0009](0009-built-in-notebook-skin.md) | Ship a built-in Notebook skin, brown bar on cream paper, and start in it | Accepted (starting skin Proposed) |
+| [0010](0010-skin-moves-into-patina.md) | Move the Notebook skin and bar_controls into Patina | Accepted |
 
 ## Decision Relationship
 
@@ -63,6 +64,7 @@ flowchart TD
     A --> G[0007: Notes outside the workspace]
     A --> H[0008: Per-user install, icon]
     H --> I[0009: Notebook skin, brown icon]
+    I --> J[0010: Skin moved into Patina]
 ```
 
 ## Revisit Triggers
