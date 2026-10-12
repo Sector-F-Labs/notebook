@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use egui::{Key, KeyboardShortcut, Modifiers, RichText};
 use patina::frame::{self, TitleBar};
+use patina::ime;
 use patina::skin::{self, Skin};
 
 use crate::config::Config;
@@ -991,6 +992,7 @@ impl eframe::App for App {
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         frame::release_grab(ctx, raw_input);
+        ime::drop_repeated_preedits(ctx, raw_input);
     }
 
     fn on_exit(&mut self) {
