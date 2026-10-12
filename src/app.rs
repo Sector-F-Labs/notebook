@@ -31,6 +31,7 @@ enum Action {
     PickFolder,
     NewNote,
     NewFolder,
+    Refresh,
     RenameNote,
     Save,
     TrashNote,
@@ -158,6 +159,7 @@ impl App {
         }
     }
 
+    /// Re-read the workspace from disk, for changes made outside the app.
     fn refresh(&mut self) {
         if let Some(folder) = &self.folder {
             self.entries = notes::scan(folder);
@@ -308,6 +310,9 @@ impl App {
         }
         if pressed(cmd, Key::S) {
             self.save();
+        }
+        if pressed(Modifiers::NONE, Key::F5) || pressed(cmd, Key::R) {
+            self.refresh();
         }
         if pressed(cmd, Key::Q) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -465,6 +470,7 @@ impl App {
             Action::PickFolder => self.pick_folder(),
             Action::NewNote => self.request_new_note(None),
             Action::NewFolder => self.request_new_folder(None),
+            Action::Refresh => self.refresh(),
             Action::RenameNote => {
                 if let Some(note) = &self.note {
                     self.dialog =
@@ -545,6 +551,7 @@ impl App {
             ui.separator();
             item(ui, has_folder, "New Note…", "Ctrl+N", Action::NewNote);
             item(ui, has_folder, "New Folder…", "Ctrl+Shift+N", Action::NewFolder);
+            item(ui, has_folder, "Refresh", "F5", Action::Refresh);
             ui.separator();
             item(ui, has_note, "Save", "Ctrl+S", Action::Save);
             item(ui, has_note, "Rename Note…", "F2", Action::RenameNote);
@@ -743,6 +750,12 @@ impl App {
         if Some(dir) != self.folder.as_deref() {
             ui.separator();
             self.item_menu(ui, dir);
+        } else {
+            ui.separator();
+            if ui.button("Refresh").clicked() {
+                self.refresh();
+                ui.close();
+            }
         }
     }
 
@@ -873,6 +886,11 @@ impl eframe::App for App {
         }
         if self.dialog.is_none() {
             self.shortcuts(ctx);
+        }
+        // Pick up changes made in other apps (a file manager, git, sync)
+        // when the window comes back to the front.
+        if ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::WindowFocused(true)))) {
+            self.refresh();
         }
         // Autosave a moment after the last edit.
         let now = ctx.input(|i| i.time);
