@@ -25,7 +25,7 @@ so it shares a window frame and skins with Photograph and UnAmp.
   right.
 - **Skins:** its own Notebook skin, brown leather over cream paper like the icon, which it starts
   in; Patina's other skins (Default, Calendar, Dark Orange, Steam Classic); and any skin in
-  `~/.config/patina/skins/`.
+  `~/.config/notebook/skins/`.
 
 ![Default](docs/screenshot-light.png)
 ![Dark Orange](docs/screenshot-dark-orange.png)

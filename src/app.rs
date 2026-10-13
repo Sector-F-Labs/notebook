@@ -753,7 +753,7 @@ impl App {
                 editor.select_all();
                 editor.focus(ctx);
             }
-            Action::CopySkins => match skin::shared_dir().ok_or("No config folder".to_string()).and_then(|dir| {
+            Action::CopySkins => match skin::app_dir("notebook").ok_or("No config folder".to_string()).and_then(|dir| {
                 skin::export_built_ins(&dir, skin::BUILT_IN)
             }) {
                 Ok(export) if export.copied.is_empty() => {
@@ -763,7 +763,7 @@ impl App {
                 Err(e) => self.error = Some(format!("Could not copy skins: {e}")),
             },
             Action::OpenSkinsFolder => {
-                if let Some(dir) = skin::shared_dir() {
+                if let Some(dir) = skin::app_dir("notebook") {
                     let _ = std::fs::create_dir_all(&dir);
                     let _ = patina::open::path(&dir);
                 }
@@ -1149,7 +1149,7 @@ impl App {
 const HOME_SKIN: &str = "Notebook";
 
 fn load_skins() -> (Vec<Skin>, Vec<String>) {
-    skin::load_all(skin::BUILT_IN, &skin::shared_dir().into_iter().collect::<Vec<_>>())
+    skin::load_all(skin::BUILT_IN, &skin::app_dir("notebook").into_iter().collect::<Vec<_>>())
 }
 
 
