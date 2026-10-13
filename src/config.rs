@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     /// The workspace folder open last.
     pub folder: Option<PathBuf>,
+    /// The workspace folders open in tabs, restored on the next launch.
+    pub tabs: Vec<PathBuf>,
+    /// Which of `tabs` was shown.
+    pub tab: usize,
     /// The chosen skin's name; Default when unset.
     pub skin: Option<String>,
     /// Use the desktop's title bar instead of Patina's frame.

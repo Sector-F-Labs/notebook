@@ -2,7 +2,7 @@
 
 A notes app in Rust on egui and [Patina](https://github.com/Sector-F-Labs/patina): open a folder of
 markdown files and edit them as rich text, Apple Notes style, with the markdown generated on save.
-A rewrite of the GTK Notebook in `com/divanv/notebook`.
+A rewrite of the GTK Notebook in `com/divanv/notebook-old-gtk`.
 
 Significant, hard-to-reverse architecture decisions are recorded as ADRs in `docs/adr/` (see
 `docs/adr/README.md` for the convention, and the `adr` skill for creating one). Read the relevant
@@ -37,7 +37,9 @@ launcher isn't installed, or the window was opened before it was.
 - `src/embeds.rs`: table and code block widgets.
 - `src/fonts.rs`: Ubuntu variable fonts for bold and italic note text (ADR-0003).
 - `src/notes.rs`: workspace scanning and file helpers.
-- `src/app.rs`: window, Patina header bar and toolbar, sidebar, dialogs, autosave, skins.
+- `src/app.rs`: window, Patina header bar, tabs and toolbar, sidebar, dialogs, autosave, skins.
+  `Tab` holds one workspace (folder, tree, open note, editor); `App` holds the tabs and the
+  window-wide state (ADR-0011).
 - `src/config.rs`: `~/.config/notebook/config.toml`.
 - Skins: the Notebook skin lives in Patina (`skins/notebook.toml` there, ADR-0010); this app only
   makes it the starting one (`HOME_SKIN` in `app.rs`). Patina's `TitleBar` colours the bar's

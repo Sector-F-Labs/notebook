@@ -34,7 +34,7 @@ gets its own new ADR that supersedes the old one, which stays in place with its 
 If you're working with Claude Code in this repo, `.claude/skills/adr/SKILL.md` automates the
 mechanics of adding one.
 
-Decisions made for the GTK version live in that repo (`com/divanv/notebook`); the ones that still
+Decisions made for the GTK version live in that repo (`com/divanv/notebook-old-gtk`); the ones that still
 hold are restated here, marked as carried over.
 
 ## Index
@@ -51,6 +51,7 @@ hold are restated here, marked as carried over.
 | [0008](0008-install-per-user-replacing-the-gtk-binary.md) | Install per user with make install, replacing the GTK Notebook's binary | Proposed |
 | [0009](0009-built-in-notebook-skin.md) | Ship a built-in Notebook skin, brown bar on cream paper, and start in it | Accepted (starting skin Proposed) |
 | [0010](0010-skin-moves-into-patina.md) | Move the Notebook skin and bar_controls into Patina | Accepted |
+| [0011](0011-tabs-each-a-workspace.md) | Tabs, each a workspace of its own, in Patina's tab strip | Proposed |
 
 ## Decision Relationship
 
@@ -65,6 +66,7 @@ flowchart TD
     A --> H[0008: Per-user install, icon]
     H --> I[0009: Notebook skin, brown icon]
     I --> J[0010: Skin moved into Patina]
+    G --> K[0011: Tabs, each a workspace]
 ```
 
 ## Revisit Triggers

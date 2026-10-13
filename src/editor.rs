@@ -187,6 +187,10 @@ impl Editor {
         ctx.memory_mut(|m| m.request_focus(self.id));
     }
 
+    pub fn has_focus(&self, ctx: &egui::Context) -> bool {
+        ctx.memory(|m| m.has_focus(self.id))
+    }
+
     /// Puts the cursor at the end of the first line (after a new note's title).
     pub fn cursor_to_first_line_end(&mut self) {
         let pos = self.fix(Pos::new(0, usize::MAX));
