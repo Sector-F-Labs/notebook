@@ -52,6 +52,7 @@ hold are restated here, marked as carried over.
 | [0009](0009-built-in-notebook-skin.md) | Ship a built-in Notebook skin, brown bar on cream paper, and start in it | Accepted (starting skin Proposed) |
 | [0010](0010-skin-moves-into-patina.md) | Move the Notebook skin and bar_controls into Patina | Accepted |
 | [0011](0011-tabs-each-a-workspace.md) | Tabs, each a workspace of its own, in Patina's tab strip | Proposed |
+| [0012](0012-images-as-embedded-blocks.md) | Show images on their own line as embedded blocks, copying in ones from outside | Proposed |
 
 ## Decision Relationship
 
@@ -67,6 +68,7 @@ flowchart TD
     H --> I[0009: Notebook skin, brown icon]
     I --> J[0010: Skin moved into Patina]
     G --> K[0011: Tabs, each a workspace]
+    B --> L[0012: Images as embedded blocks]
 ```
 
 ## Revisit Triggers

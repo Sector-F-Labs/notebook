@@ -1,11 +1,19 @@
 //! Widgets embedded in the editor in place of a paragraph: tables, whose
-//! cells hold their inline markdown (ADR-0005), and code blocks with a
-//! language picker, a copy button and syntax highlighting (ADR-0006).
+//! cells hold their inline markdown (ADR-0005), code blocks with a
+//! language picker, a copy button and syntax highlighting (ADR-0006), and
+//! images with their description (ADR-0012).
+
+use std::path::Path;
 
 use egui::{Id, RichText};
 use egui_extras::syntax_highlighting::{self, CodeTheme};
 
-use crate::markdown::{Align, Table};
+use crate::markdown::{Align, Image, Table};
+use crate::notes;
+
+/// Images are shown at their own size, scaled down to fit the column and,
+/// for tall ones, this height.
+const IMAGE_MAX_HEIGHT: f32 = 640.0;
 
 #[derive(Default)]
 pub struct EmbedResponse {
@@ -222,6 +230,61 @@ pub fn code(ui: &mut egui::Ui, lang: &mut String, code: &mut String, id: Id) -> 
         );
         out.changed |= resp.changed();
     });
+    out
+}
+
+/// An image, with its description (the markdown alt text) editable
+/// under it. Relative sources are found from `dir`, the note's folder.
+pub fn image(ui: &mut egui::Ui, image: &mut Image, dir: Option<&Path>, id: Id) -> EmbedResponse {
+    let mut out = EmbedResponse::default();
+    let uri = notes::image_uri(&image.src, dir);
+    let width = ui.available_width();
+    let missing = uri.strip_prefix("file://").is_some_and(|path| !Path::new(path).exists());
+    let shown = if missing {
+        let text = RichText::new(format!("Image not found: {}", image.src)).weak();
+        egui::Frame::group(ui.style()).show(ui, |ui| ui.add(egui::Label::new(text).sense(egui::Sense::click()))).inner
+    } else {
+        ui.add(
+        egui::Image::new(uri.clone())
+            .fit_to_original_size(1.0)
+            .max_width(width)
+            .max_height(IMAGE_MAX_HEIGHT)
+            .corner_radius(4)
+            .sense(egui::Sense::click()),
+        )
+    };
+    let hint = if image.title.is_empty() { image.src.clone() } else { format!("{}\n{}", image.title, image.src) };
+    shown.on_hover_text(hint).context_menu(|ui| {
+        if ui.button("Open Image").clicked() {
+            // A local file in the image viewer, not the web browser.
+            match uri.strip_prefix("file://") {
+                Some(path) => {
+                    let _ = patina::open::path(Path::new(path));
+                }
+                None => ui.ctx().open_url(egui::OpenUrl::new_tab(&uri)),
+            }
+            ui.close();
+        }
+        if ui.button("Copy Image Path").clicked() {
+            ui.ctx().copy_text(image.src.clone());
+            ui.close();
+        }
+        ui.separator();
+        if ui.button("Remove Image").clicked() {
+            out.delete = true;
+            ui.close();
+        }
+    });
+    let alt = ui.add(
+        egui::TextEdit::singleline(&mut image.alt)
+            .id(id.with("alt"))
+            .hint_text("Add a description")
+            .font(egui::TextStyle::Small)
+            .text_color(ui.visuals().weak_text_color())
+            .frame(egui::Frame::NONE)
+            .desired_width(width),
+    );
+    out.changed = alt.changed();
     out
 }
 

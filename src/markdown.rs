@@ -2,10 +2,11 @@
 //! rich editor works with.
 //!
 //! The rich editor only understands a subset of markdown (paragraphs,
-//! headings, quotes, code blocks, simple lists and basic inline styles).
-//! Anything else (tables, HTML, images, footnotes, front matter, complex
-//! lists) is kept as `Raw` text and written back verbatim, so opening and
-//! saving a file never drops content.
+//! headings, quotes, code blocks, tables, images on a line of their own,
+//! simple lists and basic inline styles). Anything else (HTML, images
+//! inside text, footnotes, front matter, complex lists) is kept as `Raw`
+//! text and written back verbatim, so opening and saving a file never
+//! drops content.
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use std::ops::Range;
@@ -28,6 +29,7 @@ pub enum Block {
     Raw,
     Item { kind: ListKind, depth: u8 },
     Table(Table),
+    Image(Image),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -54,6 +56,15 @@ impl Table {
     pub fn columns(&self) -> usize {
         self.align.len()
     }
+}
+
+/// An image alone in its paragraph: `![alt](src "title")`. `src` is as
+/// written: a path relative to the note, an absolute path or a URL.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Image {
+    pub alt: String,
+    pub src: String,
+    pub title: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -183,6 +194,36 @@ fn table_markdown(table: &Table) -> String {
     lines.join("\n")
 }
 
+/// The image filling the paragraph that starts at `start`, if that's all
+/// it holds, and the index of the paragraph's end.
+fn lone_image(events: &Events, start: usize) -> Option<(Image, usize)> {
+    let Some((Event::Start(Tag::Image { dest_url, title, .. }), _)) = events.get(start + 1) else {
+        return None;
+    };
+    let end = matching_end(events, start + 1);
+    if !matches!(events.get(end + 1), Some((Event::End(TagEnd::Paragraph), _))) {
+        return None;
+    }
+    // The description as plain text: any styling in it is dropped.
+    let alt = events[start + 2..end]
+        .iter()
+        .filter_map(|(e, _)| match e {
+            Event::Text(t) | Event::Code(t) => Some(t.as_ref()),
+            Event::SoftBreak | Event::HardBreak => Some(" "),
+            _ => None,
+        })
+        .collect();
+    Some((Image { alt, src: dest_url.to_string(), title: title.to_string() }, end + 1))
+}
+
+fn image_markdown(image: &Image) -> String {
+    let title = match image.title.as_str() {
+        "" => String::new(),
+        t => format!(" \"{}\"", t.replace('"', "\\\"")),
+    };
+    format!("![{}]({}{title})", escape(&image.alt), link_dest(&image.src))
+}
+
 /// A quote the rich editor can represent: paragraphs only.
 fn quote_is_simple(events: &Events, start: usize) -> bool {
     let end = matching_end(events, start);
@@ -301,6 +342,12 @@ pub fn parse(src: &str) -> Vec<Line> {
         let (event, range) = &events[i];
         match event {
             Event::Start(tag) => match tag {
+                Tag::Paragraph if im.lists.is_empty() && im.quotes == 0 && lone_image(&events, i).is_some() => {
+                    let (image, end) = lone_image(&events, i).expect("checked above");
+                    im.finish_line();
+                    im.push(Line::new(Block::Image(image)));
+                    i = end;
+                }
                 Tag::Paragraph => {
                     let in_fresh_item = matches!(
                         &im.current,
@@ -670,6 +717,7 @@ pub fn to_markdown(lines: &[Line]) -> String {
                     blocks.push(table_markdown(table));
                 }
             }
+            Block::Image(image) => blocks.push(image_markdown(image)),
             Block::Heading(level) => {
                 let text = inline_markdown(&line.spans);
                 blocks.push(format!("{} {}", "#".repeat(*level as usize), text.trim()));
@@ -694,6 +742,26 @@ mod tests {
 
     fn roundtrip(src: &str) -> String {
         to_markdown(&parse(src))
+    }
+
+    #[test]
+    fn an_image_on_its_own_line_is_an_image_block() {
+        let lines = parse("Before\n\n![A cat](pics/cat%20one.png \"Tabby\")\n\nAfter\n");
+        assert_eq!(
+            lines[1].block,
+            Block::Image(Image { alt: "A cat".into(), src: "pics/cat%20one.png".into(), title: "Tabby".into() })
+        );
+        assert_eq!(roundtrip("![A cat](pics/cat.png \"Tabby\")\n"), "![A cat](pics/cat.png \"Tabby\")\n");
+        assert_eq!(roundtrip("![a \\[b\\]](<x y.png>)\n"), "![a \\[b\\]](<x y.png>)\n");
+        assert_eq!(roundtrip("![](x.png)\n"), "![](x.png)\n");
+    }
+
+    #[test]
+    fn images_inside_text_or_lists_stay_raw() {
+        for src in ["Look: ![cat](cat.png) here\n", "- ![cat](cat.png)\n", "> ![cat](cat.png)\n"] {
+            assert!(!parse(src).iter().any(|l| matches!(l.block, Block::Image(_))), "{src}");
+            assert_eq!(roundtrip(src), src);
+        }
     }
 
     #[test]

@@ -14,7 +14,7 @@ use patina::tabs::{self, TabAction, TabStrip};
 
 use crate::config::Config;
 use crate::editor::{BlockStyle, Clipboard, Editor};
-use crate::markdown::Inline;
+use crate::markdown::{Image, Inline};
 use crate::notes::{self, Entry};
 
 /// How long after the last edit a note is saved.
@@ -51,6 +51,7 @@ enum Action {
     SystemTitleBar(bool),
     ToggleSource,
     InsertTable,
+    InsertImage,
     Block(BlockStyle),
     Inline(Inline),
 }
@@ -94,6 +95,8 @@ pub struct App {
     notice: Option<String>,
     /// A folder being picked, and the id of the tab it's for.
     picked: Option<(u64, mpsc::Receiver<PathBuf>)>,
+    /// Images being picked to insert, and the id of the tab they're for.
+    picked_images: Option<(u64, mpsc::Receiver<Vec<PathBuf>>)>,
     /// Screenshot mode: where to save, and whether one was asked for.
     screenshot: Option<(PathBuf, bool)>,
     forced_skin: Option<String>,
@@ -149,6 +152,7 @@ impl Tab {
         let saved = self.save();
         let text = std::fs::read_to_string(&path).map_err(|e| format!("Could not open {}: {e}", path.display()))?;
         self.editor.load(&text);
+        self.editor.set_dir(path.parent().map(Path::to_path_buf));
         self.source = self.source.is_some().then_some(text);
         self.note = Some(OpenNote { path, saved_edits: self.editor.edits(), edited_at: 0.0 });
         saved
@@ -158,6 +162,7 @@ impl Tab {
         let saved = self.save();
         self.note = None;
         self.editor.load("");
+        self.editor.set_dir(None);
         self.source = None;
         saved
     }
@@ -214,8 +219,37 @@ impl Tab {
         std::fs::rename(from, &to).map_err(|e| e.to_string())?;
         if let Some(note) = &mut self.note {
             note.path = notes::moved_path(&note.path, from, &to);
+            self.editor.set_dir(note.path.parent().map(Path::to_path_buf));
         }
         self.refresh();
+        Ok(())
+    }
+
+    /// Adds image files to the open note at the cursor. One already in the
+    /// workspace is linked where it is; any other is copied next to the
+    /// note first, so the note doesn't depend on it (ADR-0012).
+    fn add_images(&mut self, files: &[PathBuf], now: f64) -> Result<(), String> {
+        let Some(dir) = self.note.as_ref().and_then(|n| n.path.parent()).map(Path::to_path_buf) else {
+            return Err("Open a note to add images to".into());
+        };
+        if self.source.is_some() {
+            return Err("Switch off the Markdown view to add images".into());
+        }
+        let root = self.folder.clone().unwrap_or_else(|| dir.clone());
+        for file in files {
+            let file = file.canonicalize().unwrap_or_else(|_| file.clone());
+            let target = if file.starts_with(&root) {
+                file.clone()
+            } else {
+                let name = file.file_name().unwrap_or_default().to_string_lossy();
+                let target = notes::free_path(&dir, &name);
+                std::fs::copy(&file, &target).map_err(|e| format!("Could not copy {}: {e}", file.display()))?;
+                target
+            };
+            let alt = file.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+            let src = notes::relative_src(&dir, &target);
+            self.editor.insert_image(Image { alt, src, title: String::new() }, now);
+        }
         Ok(())
     }
 
@@ -269,6 +303,7 @@ impl Tab {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, open: Option<PathBuf>) -> Self {
         crate::fonts::install(&cc.egui_ctx);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         patina::appearance::watch(&cc.egui_ctx);
         let config = Config::load();
         let (skins, skin_errors) = load_skins();
@@ -285,6 +320,7 @@ impl App {
             error: None,
             notice: None,
             picked: None,
+            picked_images: None,
             screenshot: std::env::var_os("NOTEBOOK_SCREENSHOT").map(|p| (PathBuf::from(p), false)),
             forced_skin: None,
             focus_editor: false,
@@ -451,6 +487,52 @@ impl App {
         self.picked = Some((self.tab().id, rx));
     }
 
+    fn pick_images(&mut self) {
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let dialog = rfd::FileDialog::new()
+                .set_title("Insert Image")
+                .add_filter("Images", &["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
+            if let Some(paths) = dialog.pick_files() {
+                let _ = tx.send(paths);
+            }
+        });
+        self.picked_images = Some((self.tab().id, rx));
+    }
+
+    /// Images to add to tab `id`'s note, if it's still open.
+    fn picked_images(&mut self, ctx: &egui::Context, id: u64, files: Vec<PathBuf>) {
+        let Some(i) = self.tabs.iter().position(|t| t.id == id) else { return };
+        self.show_tab(i);
+        self.add_images(ctx, &files);
+    }
+
+    fn add_images(&mut self, ctx: &egui::Context, files: &[PathBuf]) {
+        let now = ctx.input(|i| i.time);
+        let added = self.tab_mut().add_images(files, now);
+        if added.is_ok() {
+            let tab = self.tab_mut();
+            if let Some(note) = &mut tab.note {
+                note.edited_at = now;
+            }
+            tab.editor.focus(ctx);
+        }
+        self.report(added);
+    }
+
+    /// Files dropped on the window: images go into the open note, notes
+    /// open in the shown tab.
+    fn dropped(&mut self, ctx: &egui::Context) {
+        let files: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
+        let images: Vec<PathBuf> = files.iter().filter(|f| notes::is_image(f)).cloned().collect();
+        if !images.is_empty() {
+            self.add_images(ctx, &images);
+        }
+        if let Some(note) = files.into_iter().find(|f| notes::is_note(f)) {
+            self.open_note(note);
+        }
+    }
+
     /// A folder picked for tab `id`: opens it there, or in a new tab if
     /// that one was closed meanwhile.
     fn picked_folder(&mut self, id: u64, folder: PathBuf) {
@@ -581,6 +663,9 @@ impl App {
                 }
                 ui.add_enabled_ui(editing, |ui| {
                     ui.separator();
+                    if ui.button("🖼").on_hover_text("Insert Image…").clicked() {
+                        right.push(Action::InsertImage);
+                    }
                     if ui.button("⊞").on_hover_text("Insert Table").clicked() {
                         right.push(Action::InsertTable);
                     }
@@ -680,7 +765,7 @@ impl App {
             Action::OpenSkinsFolder => {
                 if let Some(dir) = skin::shared_dir() {
                     let _ = std::fs::create_dir_all(&dir);
-                    ctx.open_url(egui::OpenUrl::new_tab(format!("file://{}", dir.display())));
+                    let _ = patina::open::path(&dir);
                 }
             }
             Action::SetSkin(name) => {
@@ -700,6 +785,7 @@ impl App {
             }
             Action::ToggleSource => self.tab_mut().toggle_source(),
             Action::InsertTable => self.tab_mut().editor.insert_table(now),
+            Action::InsertImage => self.pick_images(),
             Action::Block(style) => {
                 let editor = &mut self.tab_mut().editor;
                 editor.set_block(style, now);
@@ -752,6 +838,7 @@ impl App {
             ui.separator();
             item(ui, editing, "Code Block", "", Action::Block(BlockStyle::Code));
             item(ui, editing, "Insert Table", "", Action::InsertTable);
+            item(ui, editing, "Insert Image…", "", Action::InsertImage);
         });
         ui.menu_button("View", |ui| {
             let mut source = tab.source.is_some();
@@ -1072,6 +1159,11 @@ impl eframe::App for App {
             self.picked = None;
             self.picked_folder(id, path);
         }
+        if let Some((id, files)) = self.picked_images.as_ref().and_then(|(id, rx)| Some((*id, rx.try_recv().ok()?))) {
+            self.picked_images = None;
+            self.picked_images(ctx, id, files);
+        }
+        self.dropped(ctx);
         if self.dialog.is_none() {
             // Before the editor sees Ctrl+PageUp/PageDown.
             if let Some(action) = tabs::keys(ctx, self.tabs.len(), self.shown) {
@@ -1099,7 +1191,7 @@ impl eframe::App for App {
                 ctx.request_repaint_after(Duration::from_secs_f64(wait));
             }
         }
-        if self.picked.is_some() {
+        if self.picked.is_some() || self.picked_images.is_some() {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
         self.remember_tabs();
@@ -1221,6 +1313,34 @@ impl eframe::App for App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn added_images_are_linked_inside_the_workspace_and_copied_from_outside() {
+        let root = std::env::temp_dir().join(format!("notebook-images-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (work, outside) = (root.join("work"), root.join("outside"));
+        std::fs::create_dir_all(work.join("Pics")).unwrap();
+        std::fs::create_dir_all(work.join("Notes")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(work.join("Notes/a.md"), "# A\n").unwrap();
+        std::fs::write(work.join("Pics/in.png"), "png").unwrap();
+        std::fs::write(outside.join("cat photo.png"), "png").unwrap();
+        // Taken, so the copy gets a new name.
+        std::fs::write(work.join("Notes/cat photo.png"), "other").unwrap();
+
+        let mut tab = Tab::new(0);
+        tab.open_folder(work.clone()).unwrap();
+        tab.open_note(work.join("Notes/a.md")).unwrap();
+        tab.add_images(&[work.join("Pics/in.png"), outside.join("cat photo.png")], 0.0).unwrap();
+        tab.save().unwrap();
+
+        let md = std::fs::read_to_string(work.join("Notes/a.md")).unwrap();
+        assert!(md.contains("![in](../Pics/in.png)"), "{md}");
+        assert!(md.contains("![cat photo](<cat photo 2.png>)"), "{md}");
+        assert_eq!(std::fs::read_to_string(work.join("Notes/cat photo 2.png")).unwrap(), "png");
+        assert!(!work.join("Notes/in.png").exists(), "an image in the workspace isn't copied");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn the_home_skin_is_built_into_patina() {

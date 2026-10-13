@@ -988,6 +988,7 @@ dependencies = [
  "ahash",
  "egui",
  "enum-map",
+ "image",
  "itertools",
  "log",
  "mime_guess2",
@@ -1797,10 +1798,15 @@ checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
+ "color_quant",
+ "gif",
+ "image-webp",
  "moxcms",
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -2618,9 +2624,9 @@ dependencies = [
 
 [[package]]
 name = "patina-ui"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bf59c1de69d96e1a1033ae669a43dd562d153b7d727b98d19abff7d9f1f174b"
+checksum = "fddc1e34946412092ed9184eb0dd8b4f15d94732f26ee992b08fc342a0a631a6"
 dependencies = [
  "dirs",
  "egui",

@@ -31,12 +31,13 @@ launcher isn't installed, or the window was opened before it was.
 
 - `src/markdown.rs`: markdown ↔ line model (`Line`/`Block`/`Span`), carried over from the GTK
   version unchanged, with round-trip tests.
-- `src/doc.rs`: paragraphs (`Para`: text, table, code) and span operations, counted in characters.
+- `src/doc.rs`: paragraphs (`Para`: text, table, code, image) and span operations, counted in
+  characters.
 - `src/editor.rs`: the WYSIWYG widget: layout, cursor, selection, keys, mouse, IME, clipboard,
   undo (ADR-0002).
-- `src/embeds.rs`: table and code block widgets.
+- `src/embeds.rs`: table, code block and image widgets (ADR-0012).
 - `src/fonts.rs`: Ubuntu variable fonts for bold and italic note text (ADR-0003).
-- `src/notes.rs`: workspace scanning and file helpers.
+- `src/notes.rs`: workspace scanning and file helpers, including image paths.
 - `src/app.rs`: window, Patina header bar, tabs and toolbar, sidebar, dialogs, autosave, skins.
   `Tab` holds one workspace (folder, tree, open note, editor); `App` holds the tabs and the
   window-wide state (ADR-0011).

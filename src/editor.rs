@@ -3,8 +3,8 @@
 //!
 //! Each text paragraph is laid out as one egui galley from its styled spans;
 //! list markers, checkboxes and quote bars are painted beside the text, so
-//! the cursor never enters them. Tables and code blocks are embedded widgets
-//! (see `embeds`). The cursor lives in text paragraphs only and skips over
+//! the cursor never enters them. Tables, code blocks and images are embedded
+//! widgets (see `embeds`). The cursor lives in text paragraphs only and skips over
 //! embeds.
 //!
 //! Input is read from egui's events while the editor has focus: typed text
@@ -12,6 +12,7 @@
 //! presses and drags on the text. Keyboard shortcuts for formatting are
 //! handled by the app, which calls `toggle_inline` and `set_block`.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::text::{CCursor, LayoutJob, TextFormat};
@@ -20,7 +21,7 @@ use egui::{Color32, Event, EventFilter, Galley, Id, Key, Modifiers, Pos2, Rect, 
 use crate::doc::{self, Para, Pos};
 use crate::embeds;
 use crate::fonts;
-use crate::markdown::{self, Block, Inline, Line, ListKind, MAX_DEPTH, Span, Table};
+use crate::markdown::{self, Block, Image, Inline, Line, ListKind, MAX_DEPTH, Span, Table};
 
 /// Paragraph styles offered by the toolbar and shortcuts.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -136,6 +137,8 @@ pub struct Editor {
     scroll_to_cursor: bool,
     /// A code block just made, whose text should take the keyboard.
     focus_code: Option<usize>,
+    /// The note's folder, which relative image paths start from.
+    dir: Option<PathBuf>,
     id: Id,
 }
 
@@ -158,8 +161,14 @@ impl Editor {
             edits: 0,
             scroll_to_cursor: false,
             focus_code: None,
+            dir: None,
             id,
         }
+    }
+
+    /// Sets the folder relative image paths are found from: the note's.
+    pub fn set_dir(&mut self, dir: Option<PathBuf>) {
+        self.dir = dir;
     }
 
     /// Replaces the document with `md`, clearing undo history.
@@ -583,17 +592,26 @@ impl Editor {
         self.anchor = self.cursor;
     }
 
-    /// Inserts a 2×2 table after the cursor's paragraph, or in place of it
-    /// when it's empty.
+    /// Inserts a 2×2 table; see `insert_embed`.
     pub fn insert_table(&mut self, now: f64) {
+        self.insert_embed(Para::Table(Table::new(2, 2)), now);
+    }
+
+    /// Inserts an image; see `insert_embed`.
+    pub fn insert_image(&mut self, image: Image, now: f64) {
+        self.insert_embed(Para::Image(image), now);
+    }
+
+    /// Inserts a table or image after the cursor's paragraph, or in place
+    /// of it when it's empty, and puts the cursor on the line below.
+    fn insert_embed(&mut self, embed: Para, now: f64) {
         self.begin(EditKind::Other, now);
         let para = self.cursor.para;
-        let table = Para::Table(Table::new(2, 2));
         let at = if self.line_len(para) == 0 && self.line(para).block == Block::Paragraph {
-            self.paras[para] = table;
+            self.paras[para] = embed;
             para
         } else {
-            self.paras.insert(para + 1, table);
+            self.paras.insert(para + 1, embed);
             para + 1
         };
         if !matches!(self.paras.get(at + 1), Some(Para::Text(_))) {
@@ -975,6 +993,7 @@ impl Editor {
                 let response = match &mut self.paras[i] {
                     Para::Table(table) => embeds::table(ui, table, self.id.with(("table", i))),
                     Para::Code { lang, code } => embeds::code(ui, lang, code, code_id(self.id, i)),
+                    Para::Image(image) => embeds::image(ui, image, self.dir.as_deref(), self.id.with(("image", i))),
                     Para::Text(_) => unreachable!(),
                 };
                 if response.changed {

@@ -88,6 +88,73 @@ pub fn valid_name(name: &str) -> Result<(), String> {
     }
 }
 
+/// Image files the editor can show and insert.
+pub fn is_image(path: &Path) -> bool {
+    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+    matches!(ext.as_deref(), Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"))
+}
+
+/// Decodes `%20`-style escapes, which markdown image paths often use for
+/// spaces. Anything that isn't a valid escape is left as it is.
+fn percent_decode(src: &str) -> String {
+    let bytes = src.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = bytes.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok());
+        match (bytes[i], hex) {
+            (b'%', Some(byte)) => {
+                out.push(byte);
+                i += 3;
+            }
+            (b, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8(out).unwrap_or_else(|_| src.to_string())
+}
+
+/// The URI egui loads an image's `src` from: URLs as they are, paths as
+/// `file://`, relative ones from `dir` (the note's folder).
+pub fn image_uri(src: &str, dir: Option<&Path>) -> String {
+    if src.contains("://") {
+        return src.to_string();
+    }
+    let path = PathBuf::from(percent_decode(src));
+    let path = match dir {
+        Some(dir) if path.is_relative() => dir.join(path),
+        _ => path,
+    };
+    format!("file://{}", path.display())
+}
+
+/// How a note in `dir` links to `file`: relative, with `/` and `..` as
+/// needed, or absolute when they share no root.
+pub fn relative_src(dir: &Path, file: &Path) -> String {
+    let common = dir.components().zip(file.components()).take_while(|(a, b)| a == b).count();
+    if common == 0 {
+        return file.to_string_lossy().into_owned();
+    }
+    let ups = dir.components().count() - common;
+    let rest = file.components().skip(common).map(|c| c.as_os_str().to_string_lossy().into_owned());
+    std::iter::repeat_n("..".to_string(), ups).chain(rest).collect::<Vec<_>>().join("/")
+}
+
+/// `dir/name`, or `dir/name 2`, `dir/name 3`... if it's taken.
+pub fn free_path(dir: &Path, name: &str) -> PathBuf {
+    let path = dir.join(name);
+    if !path.exists() {
+        return path;
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem, format!(".{ext}")),
+        _ => (name, String::new()),
+    };
+    (2..).map(|n| dir.join(format!("{stem} {n}{ext}"))).find(|p| !p.exists()).expect("some number is free")
+}
+
 /// Writes through a temporary file and a rename, so a crash mid-save never
 /// leaves a half-written note.
 pub fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
@@ -140,6 +207,29 @@ mod tests {
         assert!(valid_name("a/b").is_err());
         assert!(valid_name(".x").is_err());
         assert!(valid_name("  ").is_err());
+    }
+
+    #[test]
+    fn image_paths() {
+        let dir = Path::new("/n/Work");
+        assert_eq!(image_uri("cat%20photo.png", Some(dir)), "file:///n/Work/cat photo.png");
+        assert_eq!(image_uri("/pics/a.png", Some(dir)), "file:///pics/a.png");
+        assert_eq!(image_uri("https://x.org/a.png", Some(dir)), "https://x.org/a.png");
+        assert_eq!(image_uri("50%.png", Some(dir)), "file:///n/Work/50%.png");
+        assert_eq!(relative_src(dir, Path::new("/n/Work/a b.png")), "a b.png");
+        assert_eq!(relative_src(dir, Path::new("/n/Pics/x/a.png")), "../Pics/x/a.png");
+        assert!(is_image(Path::new("a.JPG")) && !is_image(Path::new("a.md")));
+    }
+
+    #[test]
+    fn free_paths_number_taken_names() {
+        let dir = std::env::temp_dir().join(format!("notebook-free-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(free_path(&dir, "a.png"), dir.join("a.png"));
+        std::fs::write(dir.join("a.png"), "").unwrap();
+        assert_eq!(free_path(&dir, "a.png"), dir.join("a 2.png"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

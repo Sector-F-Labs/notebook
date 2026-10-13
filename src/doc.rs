@@ -1,12 +1,12 @@
 //! The document the editor works on: the markdown model's lines, with code
-//! blocks gathered into one paragraph each and tables kept whole, plus the
+//! blocks gathered into one paragraph each and tables and images kept whole, plus the
 //! text operations the editor needs on a line's styled spans.
 //!
 //! Positions are counted in characters, not bytes, within a text paragraph.
 
 use std::ops::Range;
 
-use crate::markdown::{Block, Inline, Line, Span, Table};
+use crate::markdown::{Block, Image, Inline, Line, Span, Table};
 
 /// One paragraph of the document.
 #[derive(Debug, Clone, PartialEq)]
@@ -18,6 +18,7 @@ pub enum Para {
         lang: String,
         code: String,
     },
+    Image(Image),
 }
 
 impl Para {
@@ -69,6 +70,7 @@ pub fn from_lines(lines: Vec<Line>) -> Vec<Para> {
                 }
             }
             Block::Table(table) => paras.push(Para::Table(table)),
+            Block::Image(image) => paras.push(Para::Image(image)),
             _ => paras.push(Para::Text(line)),
         }
     }
@@ -83,6 +85,7 @@ pub fn to_lines(paras: &[Para]) -> Vec<Line> {
         match para {
             Para::Text(line) => lines.push(line.clone()),
             Para::Table(table) => lines.push(Line { block: Block::Table(table.clone()), spans: Vec::new() }),
+            Para::Image(image) => lines.push(Line { block: Block::Image(image.clone()), spans: Vec::new() }),
             Para::Code { lang, code } => {
                 for l in code.split('\n') {
                     lines.push(Line {
