@@ -29,14 +29,11 @@ launcher isn't installed, or the window was opened before it was.
 
 ## Layout
 
-- `src/markdown.rs`: markdown ↔ line model (`Line`/`Block`/`Span`), carried over from the GTK
-  version unchanged, with round-trip tests.
-- `src/doc.rs`: paragraphs (`Para`: text, table, code, image) and span operations, counted in
-  characters.
-- `src/editor.rs`: the WYSIWYG widget: layout, cursor, selection, keys, mouse, IME, clipboard,
-  undo (ADR-0002).
-- `src/embeds.rs`: table, code block and image widgets (ADR-0012).
-- `src/fonts.rs`: Ubuntu variable fonts for bold and italic note text (ADR-0003).
+- The markdown model (`Line`/`Block`/`Span`), paragraphs, the WYSIWYG widget, embeds and fonts are
+  in Patina, `patina::markdown` (`model`, `doc`, `editor`, `embeds`, `fonts`; ADR-0013, Patina's
+  ADR-0015), from its develop branch. Change them there (`~/Src/com/sectorflabs/patina`, push
+  `develop`), then `cargo update -p patina-ui` here; `main.rs` brings them in as `editor` and
+  `markdown`. Never publish Patina without asking.
 - `src/notes.rs`: workspace scanning and file helpers, including image paths.
 - `src/app.rs`: window, Patina header bar, tabs and toolbar, sidebar, dialogs, autosave, skins.
   `Tab` holds one workspace (folder, tree, open note, editor); `App` holds the tabs and the

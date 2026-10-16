@@ -302,8 +302,7 @@ impl Tab {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, open: Option<PathBuf>) -> Self {
-        crate::fonts::install(&cc.egui_ctx);
-        egui_extras::install_image_loaders(&cc.egui_ctx);
+        patina::markdown::install(&cc.egui_ctx);
         patina::appearance::watch(&cc.egui_ctx);
         let config = Config::load();
         let (skins, skin_errors) = load_skins();

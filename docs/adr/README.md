@@ -53,6 +53,7 @@ hold are restated here, marked as carried over.
 | [0010](0010-skin-moves-into-patina.md) | Move the Notebook skin and bar_controls into Patina | Accepted |
 | [0011](0011-tabs-each-a-workspace.md) | Tabs, each a workspace of its own, in Patina's tab strip | Proposed |
 | [0012](0012-images-as-embedded-blocks.md) | Show images on their own line as embedded blocks, copying in ones from outside | Proposed |
+| [0013](0013-the-markdown-widget-moves-to-patina.md) | The markdown model and the WYSIWYG widget move to Patina | Accepted |
 
 ## Decision Relationship
 

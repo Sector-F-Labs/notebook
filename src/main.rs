@@ -3,13 +3,12 @@
 
 mod app;
 mod config;
-mod doc;
-mod editor;
-mod embeds;
-mod fonts;
-mod markdown;
 mod notes;
 mod screenshot;
+
+// The markdown model and the WYSIWYG widget live in Patina (its ADR-0015),
+// so Reader and Patina's help show notes the same way.
+use patina::markdown::{editor, model as markdown};
 
 use std::path::PathBuf;
 

@@ -94,42 +94,6 @@ pub fn is_image(path: &Path) -> bool {
     matches!(ext.as_deref(), Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"))
 }
 
-/// Decodes `%20`-style escapes, which markdown image paths often use for
-/// spaces. Anything that isn't a valid escape is left as it is.
-fn percent_decode(src: &str) -> String {
-    let bytes = src.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let hex = bytes.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok());
-        match (bytes[i], hex) {
-            (b'%', Some(byte)) => {
-                out.push(byte);
-                i += 3;
-            }
-            (b, _) => {
-                out.push(b);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8(out).unwrap_or_else(|_| src.to_string())
-}
-
-/// The URI egui loads an image's `src` from: URLs as they are, paths as
-/// `file://`, relative ones from `dir` (the note's folder).
-pub fn image_uri(src: &str, dir: Option<&Path>) -> String {
-    if src.contains("://") {
-        return src.to_string();
-    }
-    let path = PathBuf::from(percent_decode(src));
-    let path = match dir {
-        Some(dir) if path.is_relative() => dir.join(path),
-        _ => path,
-    };
-    format!("file://{}", path.display())
-}
-
 /// How a note in `dir` links to `file`: relative, with `/` and `..` as
 /// needed, or absolute when they share no root.
 pub fn relative_src(dir: &Path, file: &Path) -> String {
@@ -212,10 +176,6 @@ mod tests {
     #[test]
     fn image_paths() {
         let dir = Path::new("/n/Work");
-        assert_eq!(image_uri("cat%20photo.png", Some(dir)), "file:///n/Work/cat photo.png");
-        assert_eq!(image_uri("/pics/a.png", Some(dir)), "file:///pics/a.png");
-        assert_eq!(image_uri("https://x.org/a.png", Some(dir)), "https://x.org/a.png");
-        assert_eq!(image_uri("50%.png", Some(dir)), "file:///n/Work/50%.png");
         assert_eq!(relative_src(dir, Path::new("/n/Work/a b.png")), "a b.png");
         assert_eq!(relative_src(dir, Path::new("/n/Pics/x/a.png")), "../Pics/x/a.png");
         assert!(is_image(Path::new("a.JPG")) && !is_image(Path::new("a.md")));
