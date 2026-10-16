@@ -45,6 +45,7 @@ enum Action {
     Clipboard(Clipboard),
     SelectAll,
     SetSkin(String),
+    SetLightDark(String),
     ReloadSkins,
     CopySkins,
     OpenSkinsFolder,
@@ -89,10 +90,8 @@ pub struct App {
     keeps_tabs: bool,
     dialog: Option<Dialog>,
     dialog_error: Option<String>,
-    /// The latest error, shown at the bottom of the window until dismissed.
-    error: Option<String>,
-    /// A passing message, shown like `error` but not in red.
-    notice: Option<String>,
+    /// The latest message for the status bar.
+    status: Option<Status>,
     /// A folder being picked, and the id of the tab it's for.
     picked: Option<(u64, mpsc::Receiver<PathBuf>)>,
     /// Images being picked to insert, and the id of the tab they're for.
@@ -316,8 +315,7 @@ impl App {
             keeps_tabs: open.is_none(),
             dialog: None,
             dialog_error: None,
-            error: None,
-            notice: None,
+            status: None,
             picked: None,
             picked_images: None,
             screenshot: std::env::var_os("NOTEBOOK_SCREENSHOT").map(|p| (PathBuf::from(p), false)),
@@ -370,7 +368,11 @@ impl App {
     }
 
     fn apply_skin(&self, ctx: &egui::Context) {
-        self.skin().apply(ctx);
+        let skin = self.skin();
+        skin.apply(ctx);
+        if skin.follows_desktop() {
+            ctx.set_theme(self.config.theme());
+        }
     }
 
     fn tab(&self) -> &Tab {
@@ -383,7 +385,7 @@ impl App {
 
     fn report(&mut self, result: Result<(), String>) {
         if let Err(e) = result {
-            self.error = Some(e);
+            self.status = Some(Status::error(e));
         }
     }
 
@@ -418,7 +420,7 @@ impl App {
         let Some(tab) = self.tabs.get_mut(index) else { return };
         // Keep the tab if its note couldn't be saved, so nothing is lost.
         if let Err(e) = tab.save() {
-            self.error = Some(e);
+            self.status = Some(Status::error(e));
             return;
         }
         self.tabs.remove(index);
@@ -755,11 +757,18 @@ impl App {
             Action::CopySkins => match skin::app_dir("notebook").ok_or("No config folder".to_string()).and_then(|dir| {
                 skin::export_built_ins(&dir, skin::BUILT_IN)
             }) {
-                Ok(export) if export.copied.is_empty() => {
-                    self.notice = Some("The built-in skins are already in the skins folder".into())
+                Ok(export) => {
+                    // The copies share the built-ins' names, so after a reload they're the
+                    // versions in use.
+                    (self.skins, self.skin_errors) = load_skins();
+                    self.apply_skin(ctx);
+                    self.status = Some(Status::info(if export.copied.is_empty() {
+                        "The built-in skins are already in the skins folder".into()
+                    } else {
+                        format!("Copied {} to the skins folder", export.copied.join(", "))
+                    }));
                 }
-                Ok(export) => self.notice = Some(format!("Copied {} to the skins folder", export.copied.join(", "))),
-                Err(e) => self.error = Some(format!("Could not copy skins: {e}")),
+                Err(e) => self.status = Some(Status::error(format!("Could not copy skins: {e}"))),
             },
             Action::OpenSkinsFolder => {
                 if let Some(dir) = skin::app_dir("notebook") {
@@ -770,6 +779,11 @@ impl App {
             Action::SetSkin(name) => {
                 self.forced_skin = None;
                 self.config.skin = Some(name);
+                self.config.save();
+                self.apply_skin(ctx);
+            }
+            Action::SetLightDark(value) => {
+                self.config.light_dark = value;
                 self.config.save();
                 self.apply_skin(ctx);
             }
@@ -849,10 +863,17 @@ impl App {
                 actions.push(Action::SystemTitleBar(system));
             }
         });
+        // Patina's skin menu (its ADR-0017): only controls; what they did goes to the status bar.
         ui.menu_button("Skins", |ui| {
-            let current = self.skin().name.clone();
+            // Size the menu to its widest entry instead of wrapping entries to its first width.
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            let current = self.skin();
             for skin in &self.skins {
-                let resp = ui.radio(skin.name == current, &skin.name);
+                let label = match &skin.author {
+                    Some(author) if skin.path.is_some() => format!("{} — {author}", skin.name),
+                    _ => skin.name.clone(),
+                };
+                let resp = ui.radio(skin.name == current.name, label);
                 let resp = match &skin.path {
                     Some(path) => resp.on_hover_text(path.display().to_string()),
                     None => resp,
@@ -862,19 +883,57 @@ impl App {
                 }
             }
             ui.separator();
+            ui.add_enabled_ui(current.follows_desktop(), |ui| {
+                for (value, label) in [("system", "Follow desktop"), ("light", "Light"), ("dark", "Dark")] {
+                    // An unset or unknown setting follows the desktop.
+                    let on = match value {
+                        "system" => !matches!(self.config.light_dark.as_str(), "light" | "dark"),
+                        _ => self.config.light_dark == value,
+                    };
+                    if ui.radio(on, label).clicked() {
+                        actions.push(Action::SetLightDark(value.into()));
+                    }
+                }
+            });
+            ui.separator();
             if ui.button("Reload skins").clicked() {
                 actions.push(Action::ReloadSkins);
             }
-            if ui.button("Copy built-in skins to folder").clicked() {
+            let folder = skin::app_dir("notebook").map(|d| d.display().to_string()).unwrap_or_default();
+            if ui
+                .button("Copy built-in skins to folder")
+                .on_hover_text("Puts editable copies in the skins folder; never overwrites existing files")
+                .clicked()
+            {
                 actions.push(Action::CopySkins);
             }
-            if ui.button("Open skins folder").clicked() {
+            if ui.button("Open skins folder").on_hover_text(folder).clicked() {
                 actions.push(Action::OpenSkinsFolder);
             }
-            if !self.skin_errors.is_empty() {
+        });
+    }
+
+    /// The version on the left, then the latest message, coloured by its level. Skins that failed
+    /// to load stay there, ahead of newer messages, until they load.
+    fn status_bar(&self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            // Just the version: the app's name is already in the title bar and the window list,
+            // so repeating it here adds nothing.
+            ui.label(RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).weak().small());
+            let skin_errors = (!self.skin_errors.is_empty()).then(|| {
+                let n = self.skin_errors.len();
+                Status::error(format!("Couldn't load {n} skin{}", if n == 1 { "" } else { "s" }))
+            });
+            if let Some(status) = skin_errors.as_ref().or(self.status.as_ref()) {
                 ui.separator();
-                for error in &self.skin_errors {
-                    ui.colored_label(ui.visuals().error_fg_color, error);
+                let color = match status.level {
+                    Level::Error => ui.visuals().error_fg_color,
+                    Level::Warn => ui.visuals().warn_fg_color,
+                    Level::Info => ui.visuals().weak_text_color(),
+                };
+                let resp = ui.label(RichText::new(&status.text).color(color).small());
+                if skin_errors.is_some() {
+                    resp.on_hover_text(self.skin_errors.join("\n"));
                 }
             }
         });
@@ -952,7 +1011,7 @@ impl App {
         }
         let to = dir.join(from.file_name().unwrap_or_default());
         if let Err(e) = self.tab_mut().move_entry(from, to) {
-            self.error = Some(format!("Could not move {}: {e}", notes::display_name(from)));
+            self.status = Some(Status::error(format!("Could not move {}: {e}", notes::display_name(from))));
         }
     }
 
@@ -1147,6 +1206,29 @@ impl App {
 /// The skin used until one is picked: the app's own, built into Patina.
 const HOME_SKIN: &str = "Notebook";
 
+/// A message for the status bar.
+struct Status {
+    level: Level,
+    text: String,
+}
+
+#[allow(dead_code)] // Nothing warns yet.
+enum Level {
+    Error,
+    Warn,
+    Info,
+}
+
+impl Status {
+    fn error(text: impl Into<String>) -> Self {
+        Status { level: Level::Error, text: text.into() }
+    }
+
+    fn info(text: impl Into<String>) -> Self {
+        Status { level: Level::Info, text: text.into() }
+    }
+}
+
 fn load_skins() -> (Vec<Skin>, Vec<String>) {
     skin::load_all(skin::BUILT_IN, &skin::app_dir("notebook").into_iter().collect::<Vec<_>>())
 }
@@ -1209,35 +1291,25 @@ impl eframe::App for App {
             self.header(ui, &style, span)
         });
 
-        let message = self.error.clone().map(|e| (e, true)).or_else(|| self.notice.clone().map(|n| (n, false)));
-        if let Some((text, is_error)) = message {
-            egui::Panel::bottom("message").show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if is_error {
-                        ui.colored_label(ui.visuals().error_fg_color, text);
-                    } else {
-                        ui.label(text);
-                    }
-                    if ui.small_button("Dismiss").clicked() {
-                        self.error = None;
-                        self.notice = None;
-                    }
-                });
-            });
-        }
+        // Patina's status bar (its ADR-0016). It spans the window, so it comes before the sidebar,
+        // and holds both bottom corners.
+        egui::Panel::bottom("status")
+            .frame(
+                egui::Frame::side_top_panel(ui.style())
+                    .inner_margin(egui::Margin::symmetric(10, 4))
+                    .corner_radius(egui::CornerRadius { sw: radius, se: radius, ..Default::default() }),
+            )
+            .show(ui, |ui| self.status_bar(ui));
 
         // Always there, so a tab without a folder can offer to open one.
         egui::Panel::left("sidebar")
-            .frame(
-                egui::Frame::side_top_panel(ui.style()).corner_radius(egui::CornerRadius { sw: radius, ..Default::default() }),
-            )
+            .frame(egui::Frame::side_top_panel(ui.style()))
             .default_size(220.0)
             .show(ui, |ui| self.sidebar(ui));
 
-        let corner = egui::CornerRadius { se: radius, ..Default::default() };
         let tab = &mut self.tabs[self.shown];
         egui::CentralPanel::default()
-            .frame(egui::Frame::central_panel(ui.style()).corner_radius(corner).inner_margin(0))
+            .frame(egui::Frame::central_panel(ui.style()).inner_margin(0))
             .show(ui, |ui| {
                 if tab.note.is_none() {
                     if tab.folder.is_some() {

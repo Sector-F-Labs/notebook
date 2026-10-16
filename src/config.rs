@@ -15,6 +15,8 @@ pub struct Config {
     pub tab: usize,
     /// The chosen skin's name; Default when unset.
     pub skin: Option<String>,
+    /// "light" or "dark" while the skin follows the desktop; anything else follows it.
+    pub light_dark: String,
     /// Use the desktop's title bar instead of Patina's frame.
     pub system_title_bar: bool,
 }
@@ -40,6 +42,14 @@ impl Config {
                 .filter(|p| p.is_dir());
         }
         config
+    }
+
+    pub fn theme(&self) -> egui::ThemePreference {
+        match self.light_dark.as_str() {
+            "light" => egui::ThemePreference::Light,
+            "dark" => egui::ThemePreference::Dark,
+            _ => egui::ThemePreference::System,
+        }
     }
 
     pub fn save(&self) {
