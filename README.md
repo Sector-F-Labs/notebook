@@ -1,4 +1,6 @@
-# <img src="packaging/linux/notebook.svg" width="40" align="top"> Notebook
+# Notebook
+
+![Notebook's icon](docs/icon.png)
 
 Notebook is a notes app for a folder of markdown files. It edits them as rich text, Apple Notes
 style. There's no markdown on screen: you format with the toolbar or shortcuts, and the markdown is

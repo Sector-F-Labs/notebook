@@ -9,7 +9,7 @@ ICONDIR := $(PREFIX)/share/icons/hicolor
 # A throwaway config dir, so screenshots never touch your settings.
 SCREENSHOT_ENV := XDG_CONFIG_HOME=$(CURDIR)/target/screenshot-config XDG_DATA_HOME=$(CURDIR)/target/screenshot-data
 
-.PHONY: help demo-notes run dev build test check icons install uninstall screenshot clean
+.PHONY: help demo-notes run dev build test check icons install uninstall screenshot clean icon
 
 help: ## Show this help
 	@echo "Usage: make <target>"
@@ -40,6 +40,9 @@ check: test ## Run the tests and clippy
 
 icons: ## Render assets/notebook-icon-128.png from packaging/linux/notebook.svg
 	cargo run -q --example render_icon -- 128 assets/notebook-icon-128.png
+
+icon: ## docs/icon.png: the app icon at 120 px, for the README
+	scripts/icon.sh
 
 # For the current user, as the GTK Notebook did; no sudo. The launcher's
 # Exec gets the absolute path, so it works even if $(BINDIR) isn't on the
