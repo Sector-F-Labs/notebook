@@ -555,9 +555,6 @@ impl App {
         if pressed(cmd, Key::O) {
             self.pick_folder();
         }
-        if pressed(cmd, Key::W) {
-            self.close_tab(self.shown);
-        }
         if pressed(cmd_shift, Key::N) {
             self.request_new_folder(None);
         }
@@ -825,7 +822,7 @@ impl App {
             }
         };
         ui.menu_button("File", |ui| {
-            item(ui, true, "New Tab", "Ctrl+Shift+T", Action::NewTab);
+            item(ui, true, "New Tab", "Ctrl+T", Action::NewTab);
             item(ui, true, "Open Folder…", "Ctrl+O", Action::PickFolder);
             ui.separator();
             item(ui, has_folder, "New Note…", "Ctrl+N", Action::NewNote);
