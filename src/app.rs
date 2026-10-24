@@ -642,7 +642,7 @@ impl App {
         let mut right = Vec::new();
         let mut tab_action = None;
         // The tabs take the title's place (Patina ADR-0009).
-        TitleBar::new("", style).custom(custom).menu_bar(true).show(
+        TitleBar::new("", style).custom(custom).menu_bar(true).span(span).show(
             ui,
             |ui| {
                 self.menus(ui, &mut left);
