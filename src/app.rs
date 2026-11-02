@@ -969,7 +969,7 @@ impl App {
         };
         let root_name = notes::display_name(&folder);
         let resp = ui.add(egui::Label::new(RichText::new(root_name).strong()).sense(egui::Sense::click()));
-        resp.context_menu(|ui| self.folder_menu(ui, &folder));
+        patina::menu::context(&resp, |ui| self.folder_menu(ui, &folder));
         self.drop_target(ui, &resp, &folder);
         let entries = self.tab().entries.clone();
         egui::ScrollArea::vertical().id_salt(("sidebar", self.tab().id)).show(ui, |ui| {
@@ -985,7 +985,7 @@ impl App {
             // Room below the tree for right-clicking and dropping at the top level.
             let rest = ui.available_size();
             let (_, resp) = ui.allocate_exact_size(egui::vec2(rest.x, rest.y.max(40.0)), egui::Sense::click());
-            resp.context_menu(|ui| self.folder_menu(ui, &folder));
+            patina::menu::context(&resp, |ui| self.folder_menu(ui, &folder));
             self.drop_target(ui, &resp, &folder);
         });
     }
@@ -1023,7 +1023,7 @@ impl App {
                 if resp.clicked() {
                     self.open_note(path.clone());
                 }
-                resp.context_menu(|ui| self.item_menu(ui, path));
+                patina::menu::context(&resp, |ui| self.item_menu(ui, path));
             }
             Entry::Folder { path, name, children } => {
                 let id = ui.make_persistent_id(("folder", path));
@@ -1044,7 +1044,7 @@ impl App {
                     state.toggle(ui);
                     state.store(ui.ctx());
                 }
-                row.context_menu(|ui| self.folder_menu(ui, path));
+                patina::menu::context(&row, |ui| self.folder_menu(ui, path));
                 self.drop_target(ui, &row, path);
                 // Resting a drag on a closed folder opens it.
                 let dragging = egui::DragAndDrop::has_payload_of_type::<PathBuf>(ui.ctx());
