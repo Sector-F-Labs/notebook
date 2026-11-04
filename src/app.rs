@@ -247,7 +247,7 @@ impl Tab {
             };
             let alt = file.file_stem().unwrap_or_default().to_string_lossy().into_owned();
             let src = notes::relative_src(&dir, &target);
-            self.editor.insert_image(Image { alt, src, title: String::new() }, now);
+            self.editor.insert_image(Image { alt, src, title: String::new(), html: None }, now);
         }
         Ok(())
     }
