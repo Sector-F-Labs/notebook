@@ -1,3 +1,5 @@
+> **Moved.** This project now lives in [patina-desktop](https://github.com/Sector-F-Labs/patina-desktop/tree/master/notebook), in the `notebook/` folder, with its history. This repository is no longer updated.
+
 # Notebook
 
 ![Notebook's icon](docs/icon.png)
